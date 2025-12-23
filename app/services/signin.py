@@ -1,26 +1,24 @@
-import sys
 import os
 import google.generativeai as genai
-from dotenv import load_dotenv
 from PIL import Image
+from dotenv import load_dotenv
 from constants.prompts import prompt_ocr
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+MODEL_NAME = "gemini-3-flash-preview"
 
-img_path = "output/09D263EB67D64F1B9837_HCP Spend_gWin$pt8pqpTVdMv0K3xpz4B2SPUXGGWIAlg_7188 - ST-US - GSK - ViiV - Sales_2025-10-27T163142.167_20251028061206_dinein_2.png"
+def process_signin_images(img_paths, output_dir="output"):
+    combined_md = ""
+    os.makedirs(output_dir, exist_ok=True)
+    model = genai.GenerativeModel(MODEL_NAME)
 
-def signin_ocr(img_path):
-    img = Image.open(img_path)
-
-    model = genai.GenerativeModel("gemini-3-flash-preview")
-    # model = genai.GenerativeModel("gemini-2.5-flash")
-
-    resp = model.generate_content([prompt_ocr, img])
-    md = resp.text or ""
-    output_path = os.path.join("output", f"{os.path.splitext(os.path.basename(img_path))[0]}-signin.md")
+    for img_path in img_paths:
+        img = Image.open(img_path)
+        resp = model.generate_content([prompt_ocr, img])
+        combined_md += resp.text or ""
+    
+    output_path = os.path.join(output_dir, "signin_combined.md")
     with open(output_path, "w", encoding="utf-8") as f:
-        f.write(md)
-        print(md)
-    print(f"Markdown output written to: {output_path}")
-signin_ocr(img_path)
+        f.write(combined_md)
+    print(f"✅ Signin Markdown written to: {output_path}")
