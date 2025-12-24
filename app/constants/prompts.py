@@ -16,7 +16,8 @@ You are an OCR model. Extract all handwritten and typed text from this image.
 Output in clean Markdown with correct line breaks.\n
 Convert tables into a column-based text layout. Maintain distinct vertical boundaries for each column using consistent spacing or delimiters.
 If a cell is empty or merged, represent that space explicitly to ensure the column structure remains aligned and readable.\n
-re-read you output of the table and fix misalignments in the layout.\n
+add or remove blank spaces from the table to fix alignments, ensuring each column lines up vertically throughout the table.\n
+re-read you output of the table and fix misalignments in the layout, MAKE SURE the table layout is proper and easily readable and understandable.\n
 If one text is going to the next line, don't get confused by it, just continue the text normally, within the specific column.
 Do not summarize. Do not skip anything.
 """

@@ -47,7 +47,7 @@ def analyze_page_with_gemini(image_array):
         print(f"⚠️ Gemini Analysis failed: {e}")
         return 0, False
 
-def process_pdf_sequential(pdf_path, output_dir="processed_pages"):
+def process_pdf_sequential(pdf_path, output_dir="app/processed_pages"):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -70,19 +70,24 @@ def process_pdf_sequential(pdf_path, output_dir="processed_pages"):
             image = denoise_image(image)
             image = sharpen_image(image)
             image = resize_image(image, target_width=2500)
+
             angle, is_signin = analyze_page_with_gemini(image)
             if angle != 0:
                 image = rotate_image_logic(image, angle)
+
             final_name = f"{pdf_name}_{'signin' if is_signin else 'dinein'}_{os.path.basename(img_path)}"
             final_path = os.path.join(output_dir, final_name)
             cv.imwrite(final_path, image)
+
             if is_signin:
                 signin_images.append(final_path)
             else:
                 dinein_images.append(final_path)
+
             if os.path.exists(img_path):
                 os.remove(img_path)
+
         except Exception as e:
             print(f"⚠️ Error processing {img_path}: {e}")
 
-    return signin_images, dinein_images
+    return pdf_name, signin_images, dinein_images
