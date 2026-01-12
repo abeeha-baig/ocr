@@ -7,3 +7,4 @@ temp/
 *.onnx
 *.json
 pages/
+*.xlsx
