@@ -1,0 +1,830 @@
+﻿ID|Possible Names|Credential ID
+1|Syneos PSR|1
+2|Sales Rep|2
+3|Sales/Syneos|2
+4|Syneos PSR Rep|2
+5|Syneos/sales|2
+6|A.M.A.S|3
+7|AMA Medical Assistant|3
+8|A-M-A-S|3
+9|CMA|3
+10|Healthcare Business Professional|3
+11|MA|3
+12|AMAS|3
+13|Other|3
+14|OTH-Other|3
+15|RMA|3
+16|A.N.P|4
+17|Adult Nurse Practitioner|4
+18|A-N-P|4
+19|ANP.|4
+20|B.D.S|3
+21|Bachelor of Dental Surgery|3
+22|B-D-S|3
+23|C.D.E|3
+24|C-D-E|3
+25|Certified Diabetic Educator|3
+26|C.N.M|7
+27|Certified Nurse Midwife|7
+28|C-N-M|7
+29|CNM.|7
+30|C.N.S|8
+31|Clinical Nurse Specialist|8
+32|C-N-S|8
+33|CNS.|8
+34|C.P.T|3
+35|Certified Pharmacy Technician|3
+36|CPhT|3
+37|C-P-T|3
+38|CPT-1|3
+39|PhT|3
+40|C.R.N.A|10
+41|Certified Registered Nurse Anesthetist|10
+42|C-R-N-A|10
+43|CRNA.|10
+44|C.R.R.A|3
+45|Certified Registered Records Analyst|3
+46|C-R-R-A|3
+47|D.A.S|3
+48|D-A-S|3
+49|Dental Assistant|3
+50|Chiro|13
+51|Chiropractor|13
+52|D.C.|13
+53|DC.|13
+54|Doctor of Chiropractic Medicine|13
+55|D.D.S|14
+56|D-D-S|14
+57|Doctor of Dental Surgery|14
+58|D.M.D|15
+59|D-M-D|15
+60|Doctor of Medical Dentistry|15
+61|D.N.H|3
+62|Dental Hygenist|3
+63|D-N-H|3
+64|D.O|17
+65|D-O|17
+66|DO.|17
+67|Doctor of Osteopathy|17
+68|D.O.J.D|18
+69|Doctor of Osteopathy with Juris Doctorate|18
+70|D-O-J-D|18
+71|D.O.M.B|19
+72|Doctor of Osteopathy with MBA|19
+73|D-O-M-B|19
+74|D.O.M.S|20
+75|Doctor of Osteopathy with Masters|20
+76|D-O-M-S|20
+77|D.P.M|21
+78|Doctor of Podiatric Medicine|21
+79|D-P-M|21
+80|D.V.M|3
+81|Doctor of Veterinary Medicine|3
+82|D-V-M|3
+83|F.O.R.M|3
+84|F-O-R-M|3
+85|Formulary Administrator|3
+86|L.N.M|3
+87|Licensed Nurse Midwife|3
+88|L-N-M|3
+89|L.P.N|3
+90|Licensed Practical Nurse|3
+91|L-P-N|3
+92|LPN.|3
+93|LPN-C|3
+94|Doctor of Medicine|26
+95|M.D|26
+96|M.D.|26
+97|M-D|26
+98|MD.|26
+99|SJS MD|26
+100|Doctor of Medicine with Juris Doctorate|27
+101|M.D.J.D|27
+102|M-D-J-D|27
+103|Doctor of Medicine with MBA|28
+104|M.D.M.B|28
+105|M-D-M-B|28
+106|Doctor of Medicine with Masters|29
+107|M.D.M.S|29
+108|M-D-M-S|29
+109|M.H.A|3
+110|Mental Health Associate|3
+111|M-H-A|3
+112|M.N|3
+113|Master of Nursing|3
+114|M-N|3
+115|M.S.D|32
+116|Master of Science Dentistry|32
+117|M-S-D|32
+118|M.S.T|3
+119|Medical Student|3
+120|M-S-T|3
+121|Student|3
+122|M.T|3
+123|Medical Technologist|3
+124|M-T|3
+125|A.R.N.P|35
+126|Advanced Registered Nurse Practitioner|35
+127|APRN|35
+128|ARMP|35
+129|ARNP|35
+130|A-R-N-P|35
+131|ARNP.|35
+132|C.N.P|35
+133|C.R.N.P|35
+134|Certified Nurse Practitioner|35
+135|Certified Registered Nurse Practitioner|35
+136|CNP|35
+137|C-N-P|35
+138|CNP.|35
+139|CRNP|35
+140|C-R-N-P|35
+141|CRNP.|35
+142|F.N.P|35
+143|Family Nurse Practitioner|35
+144|FNP|35
+145|F-N-P|35
+146|FNP.|35
+147|FNP-BC|35
+148|FNP-C|35
+149|G.N.P|35
+150|GNP|35
+151|G-N-P|35
+152|N.P|35
+153|NP|35
+154|N-P|35
+155|NP.|35
+156|NP-C|35
+157|Nurse Practitioner|35
+158|O.C.N|3
+159|O-C-N|3
+160|Oncology Clinical Nurse|3
+161|Doctor of Optometry|37
+162|O.D|37
+163|O-D|37
+164|OD.|37
+165|P.A|38
+166|P.A.C|38
+167|P-A|38
+168|PA Resident|38
+169|PA.|38
+170|P-A-C|38
+171|PA-C|38
+172|PAC.|38
+173|PA-CPA|38
+174|Physician Assistant|38
+175|Physician Assistant Certified|38
+176|UPAC|38
+177|P.A.C.N|3
+178|P-A-C-N|3
+179|Post Anesthesia Care Nurse|3
+180|P.D.M.B|3
+181|P-D-M-B|3
+182|PharmD MBA|3
+183|P.D.M.S|3
+184|P-D-M-S|3
+185|PharmD MS|3
+186|Doctor of Pharmacy|3
+187|P.H.R.D|3
+188|P-H-R-D|3
+189|R.D|3
+190|R-D|3
+191|Registered Dietitian|3
+192|R.D.H|3
+193|R-D-H|3
+194|Registered Dental Hygenist|3
+195|B.S.N|3
+196|Bachelor of Science in Nursing|3
+197|BSN|3
+198|B-S-N|3
+199|BSRN|3
+200|M.S.N|3
+201|Master of Science in Nursing|3
+202|MSN|3
+203|M-S-N|3
+204|R.N|3
+205|Registered Nurse|3
+206|R-N|3
+207|RN.|3
+208|URN|3
+209|R.P.A|46
+210|Registered Physician Assistant|46
+211|R-P-A|46
+212|R.P.H|3
+213|Registered Pharmacist|3
+214|R-P-H|3
+215|RPH.|3
+216|R.R.T|3
+217|Registered Respiratory Therapist|3
+218|R-R-T|3
+219|ACNP.|49
+220|Advanced Certified Nurse Practitioner|49
+221|A.N.P|50
+222|Adult Nurse Practitioner|50
+223|A-N-P|50
+224|ANP.|50
+225|ANP-C|50
+226|C.N.M|51
+227|Certified Nurse Midwife|51
+228|C-N-M|51
+229|CNM.|51
+230|C.N.S|52
+231|Clinical Nurse Specialist|52
+232|C-N-S|52
+233|CNS.|52
+234|C.R.N.A|53
+235|Certified Registered Nurse Anesthetist|53
+236|C-R-N-A|53
+237|CRNA.|53
+238|Chiro|54
+239|Chiropractor|54
+240|D.C.|54
+241|DC.|54
+242|Doctor of Chiropractic Medicine|54
+243|D.D.S|55
+244|D-D-S|55
+245|Doctor of Dental Surgery|55
+246|D.M.D|56
+247|D-M-D|56
+248|Doctor of Medical Dentistry|56
+249|D.O|57
+250|D-O|57
+251|DO.|57
+252|Doctor of Osteopathy|57
+253|D.O.J.D|58
+254|Doctor of Osteopathy with Juris Doctorate|58
+255|D-O-J-D|58
+256|D.O.M.B|59
+257|Doctor of Osteopathy with MBA|59
+258|D-O-M-B|59
+259|D.O.M.S|60
+260|Doctor of Osteopathy with Masters|60
+261|D-O-M-S|60
+262|D.P.M|61
+263|Doctor of Podiatric Medicine|61
+264|D-P-M|61
+265|D.V.M|62
+266|Doctor of Veterinary Medicine|62
+267|D-V-M|62
+268|L.N.M|63
+269|Licensed Nurse Midwife|63
+270|L-N-M|63
+271|L.P.N|64
+272|Licensed Practical Nurse|64
+273|L-P-N|64
+274|LPN.|64
+275|LPN-C|64
+276|NP|64
+277|L.V.N|65
+278|Licensed Vocational Nurse|65
+279|L-V-N|65
+280|LVN.|65
+281|Doctor of Medicine|66
+282|M.D|66
+283|M.D.|66
+284|M-D|66
+285|MD.|66
+286|SJS MD|66
+287|Doctor of Medicine with Juris Doctorate|67
+288|M.D.J.D|67
+289|M-D-J-D|67
+290|Doctor of Medicine with MBA|68
+291|M.D.M.B|68
+292|M-D-M-B|68
+293|Doctor of Medicine with Masters|69
+294|M.D.M.S|69
+295|M-D-M-S|69
+296|M.N|70
+297|Master of Nursing|70
+298|M-N|70
+299|DO Student|71
+300|DO-S|71
+301|M.D. Student|71
+302|M.S.T|71
+303|MD Student|71
+304|MD-S|71
+305|Medical Student|71
+306|M-S-T|71
+307|N.P Student|71
+308|NP Student|71
+309|NP-S|71
+310|P.A Student|71
+311|PA Student|71
+312|PA-S|71
+313|Student|71
+314|A.P.R.N|72
+315|A.R.N.P|72
+316|Advanced Practitioner Registered Nurse|72
+317|Advanced Registered Nurse Practitioner|72
+318|APRN|72
+319|A-P-R-N|72
+320|APRN.|72
+321|ARMP|72
+322|ARNP|72
+323|A-R-N-P|72
+324|ARNP.|72
+325|C.N.P|72
+326|C.R.N.P|72
+327|Certified Nurse Practitioner|72
+328|Certified Registered Nurse Practitioner|72
+329|CNP|72
+330|C-N-P|72
+331|CNP.|72
+332|CRNP|72
+333|C-R-N-P|72
+334|CRNP.|72
+335|F.N.P|72
+336|Family Nurse Practitioner|72
+337|Family Nurse Practitioner Certified|72
+338|FNP|72
+339|F-N-P|72
+340|FNP BC|72
+341|FNP.|72
+342|FNP-BC|72
+343|FNPC|72
+344|FNP-C|72
+345|G.N.P|72
+346|GNP|72
+347|G-N-P|72
+348|N.P|72
+349|NP|72
+350|N-P|72
+351|NP.|72
+352|NP-C|72
+353|NPS|72
+354|Nurse Practitioner|72
+355|O.C.N|73
+356|O-C-N|73
+357|Oncology Clinical Nurse|73
+358|Doctor of Optometry|74
+359|O.D|74
+360|O-D|74
+361|OD.|74
+362|CLINICAL_PHARMACOLOGY|75
+363|P.A|75
+364|P.A.C|75
+365|P-A|75
+366|PA Resident|75
+367|PA.|75
+368|PAC|75
+369|P-A-C|75
+370|PA-C|75
+371|PAC.|75
+372|PA-CPA|75
+373|Physician Assistant|75
+374|Physician Assistant Certified|75
+375|UPAC|75
+376|Doctor of Pharmacy|76
+377|P.H.R.D|76
+378|PHAR.|76
+379|Pharm.D|76
+380|Pharmacist|76
+381|PharmD|76
+382|Pharm-D|76
+383|PHRD|76
+384|P-H-R-D|76
+385|BSN|77
+386|BSRN|77
+387|M.S.N|77
+388|Master of Science in Nursing|77
+389|MSN|77
+390|M-S-N|77
+391|R.N|77
+392|Registered Nurse|77
+393|R-N|77
+394|RN.|77
+395|URN|77
+396|R.P.A|78
+397|Registered Physician Assistant|78
+398|R-P-A|78
+399|R.P.H|79
+400|Registered Pharmacist|79
+401|R-P-H|79
+402|RPH.|79
+403|Administrative Assistant|80
+404|Activity Coordinator|81
+405|Administrative Assistant|82
+406|Associate Marriage and Family Therapist.|83
+407|Accounts Payable|84
+408|Back- Office Staff|85
+409|Billing Assistant|85
+410|Board Certified Diplomate in Clinical Social Work|86
+411|Alliance|87
+412|Alliance/BI|87
+413|boehringer ingelheim|87
+414|Lilly partners|87
+415|Biller|88
+416|Coordinator|88
+417|Medical Billing Assistant|88
+418|Specialist|88
+419|Center Administrator|89
+420|Call Center|90
+421|Certified Clinical Hemodialysis Technician|91
+422|Certified Diabetes Educator|92
+423|Community Health Worker|93
+424|Clinical Lead|94
+425|Coder|95
+426|Certified Office Assistant|96
+427|Coder|97
+428|Medical Billing and Coding Specialist|97
+429|Certified Pharmacist Technitian|98
+430|Certified Pharmacist Technitian|99
+431|Customer Service Representative|100
+432|Dental Assistant|101
+433|Dietary Risk Assessment|102
+434|Outpatient Rehabilitation|103
+435|Diagnostic Medical Sonographer|104
+436|Dental Hygenist|105
+437|FO|106
+438|Front Desk|106
+439|Office receptionist|106
+440|Receptionist|106
+441|Health Information Management|107
+442|Insurance|108
+443|Laboratory Technician|109
+444|Licensed Marriage and Family Therapist|110
+445|Lead Patient Service Representative.|111
+446|Licensed Social Worker|112
+447|CCMA|113
+448|CM|113
+449|CMAA|113
+450|Medical Assistant|113
+451|NCMA|113
+452|RMA|113
+453|MBA|114
+454|Medical Billing|114
+455|Medical Care Personnel|115
+456|Manager|116
+457|Mental Health Associate|117
+458|Medical lab supervisor|118
+459|Medical office representative|119
+460|Medical Office Staff|120
+461|Medical Records|121
+462|Medical Technologist|122
+463|National Certified Medical Assistant|123
+464|Office Manager|124
+465|Office Staff|125
+466|Participating Physician|126
+467|Practice Business Service Coordinator|127
+468|Phlebotomy Tech|128
+469|Patient Care Associate|129
+470|Patient Care Management|130
+471|Patient Care Tech|131
+472|Pharmacist|132
+473|Phlebologist|133
+474|Practice Lead|134
+475|Practice Manager|135
+476|Patient Referral Coordinator|136
+477|Patient Resource Navigator|137
+478|Patient Service Associate|138
+479|Patient Service Coordinator|139
+480|Patient Service Representative|140
+481|Patient Service Specialist|141
+482|Psychiatry|142
+483|Doctor of Psychology|143
+484|Ref C|144
+485|Ref Coor|144
+486|Referral Coordinator|144
+487|Reception Desk|145
+488|Registered Dietitian|145
+489|Registered Dental Hygenist|146
+490|REC|147
+491|Receptionist|147
+492|Resident|148
+493|Registered Medical Assistant|149
+494|Registered Polysomnographic Technologists|150
+495|Registered Respiratory Therapist|151
+496|Registered Technologist in Radiology|152
+497|Respiratory Therapist|152
+498|RT R|152
+499|Radiation Triage|153
+500|Office Staff|154
+501|Technician|155
+502|Ultrasound Tech|156
+503|AZ|157
+504|AZ DSM|157
+505|AZ Manager|157
+506|AZ Mgr|157
+507|AZ PSS|157
+508|AZ Rep|157
+509|AZ Rep.|157
+510|DSM|157
+511|PSM (AZ)|157
+512|PSS|157
+513|Rep.|157
+514|Sales Rep|157
+515|Sales Rep.|157
+516|Sales Representative|157
+517|SH (AZ)|157
+518|SH / AZ Rep|157
+519|SH /AZ Rep|157
+520|SH/AZ Rep|157
+521|Syneos|157
+522|Syneos Employee|157
+523|Syneos Rep|157
+524|Syneos Rep.|157
+525|ACNP.|158
+526|Advanced Certified Nurse Practitioner|158
+527|A.N.P|159
+528|Adult Nurse Practitioner|159
+529|A-N-P|159
+530|ANP.|159
+531|ANP-C|159
+532|C.N.M|160
+533|Certified Nurse Midwife|160
+534|C-N-M|160
+535|CNM.|160
+536|C.N.S|161
+537|Clinical Nurse Specialist|161
+538|C-N-S|161
+539|CNS.|161
+540|C.R.N.A|162
+541|Certified Registered Nurse Anesthetist|162
+542|C-R-N-A|162
+543|CRNA.|162
+544|Chiro|163
+545|Chiropractor|163
+546|D.C.|163
+547|DC.|163
+548|Doctor of Chiropractic Medicine|163
+549|D.D.S|164
+550|D-D-S|164
+551|Doctor of Dental Surgery|164
+552|D.M.D|165
+553|D-M-D|165
+554|Doctor of Medical Dentistry|165
+555|D.O|166
+556|D-O|166
+557|DO.|166
+558|Doctor of Osteopathic Medicine|166
+559|Doctor of Osteopathy|166
+560|Health Care Business Professional|166
+561|D.O.J.D|167
+562|Doctor of Osteopathy with Juris Doctorate|167
+563|D-O-J-D|167
+564|D.O.M.B|168
+565|Doctor of Osteopathy with MBA|168
+566|D-O-M-B|168
+567|D.O.M.S|169
+568|Doctor of Osteopathy with Masters|169
+569|D-O-M-S|169
+570|D.P.M|170
+571|Doctor of Podiatric Medicine|170
+572|D-P-M|170
+573|D.V.M|171
+574|Doctor of Veterinary Medicine|171
+575|D-V-M|171
+576|L.N.M|172
+577|Licensed Nurse Midwife|172
+578|L-N-M|172
+579|L.P.N|173
+580|Licensed Practical Nurse|173
+581|L-P-N|173
+582|LPN.|173
+583|Practical/Vocational Nurse|173
+584|L.V.N|174
+585|Licensed Vocational Nurse|174
+586|L-V-N|174
+587|LVN.|174
+588|Practical/Vocational Nurse|174
+589|D.R|175
+590|DOCTOR|175
+591|Doctor of Medicine|175
+592|DR|175
+593|D-R|175
+594|DR.|175
+595|Health Care Business Professional|175
+596|M.D|175
+597|M.D.|175
+598|M.D. RESIDENT|175
+599|M-D|175
+600|MD RESIDENT|175
+601|M-D RESIDENT|175
+602|MD.|175
+603|Physician|175
+604|SJS MD|175
+605|Doctor of Medicine with Juris Doctorate|176
+606|M.D.J.D|176
+607|M-D-J-D|176
+608|Doctor of Medicine with MBA|177
+609|M.D.M.B|177
+610|M-D-M-B|177
+611|Doctor of Medicine with Masters|178
+612|M.D.M.S|178
+613|M-D-M-S|178
+614|M.N|179
+615|Master of Nursing|179
+616|M-N|179
+617|A.P.R.N|180
+618|A.R.N.P|180
+619|Advanced Practitioner Registered Nurse|180
+620|Advanced Registered Nurse Practitioner|180
+621|APRN|180
+622|A-P-R-N|180
+623|APRN.|180
+624|ARMP|180
+625|ARNP|180
+626|A-R-N-P|180
+627|ARNP.|180
+628|C.N.P|180
+629|C.R.N.P|180
+630|Certified Nurse Practitioner|180
+631|Certified Registered Nurse Practitioner|180
+632|CNP|180
+633|C-N-P|180
+634|CNP.|180
+635|CRNP|180
+636|C-R-N-P|180
+637|CRNP.|180
+638|F.N.P|180
+639|Family Nurse Practitioner|180
+640|Family Nurse Practitioner Certified|180
+641|FNP|180
+642|F-N-P|180
+643|FNP.|180
+644|FNP-BC|180
+645|FNPC|180
+646|FNP-C|180
+647|N.P|180
+648|N-P|180
+649|NP.|180
+650|NP-C|180
+651|NPS|180
+652|Nurse Practitioner|180
+653|O.C.N|181
+654|O-C-N|181
+655|Oncology Clinical Nurse|181
+656|Doctor of Optometry|182
+657|O.D|182
+658|O-D|182
+659|OD.|182
+660|P.A|183
+661|P.A.C|183
+662|P-A|183
+663|PA Resident|183
+664|PA.|183
+665|PAC|183
+666|P-A-C|183
+667|PA-C|183
+668|PAC.|183
+669|PA-CPA|183
+670|PA-S|183
+671|Physician Assistant|183
+672|Physician Assistant Certified|183
+673|UPAC|183
+674|PHAR.|184
+675|Pharmacist|184
+676|Doctor of Pharmacy|185
+677|P.H.R.D|185
+678|Pharm.D|185
+679|PharmD|185
+680|Pharm-D|185
+681|P-H-R-D|185
+682|BSN|186
+683|BSRN|186
+684|M.S.N|186
+685|Master of Science in Nursing|186
+686|MSN|186
+687|M-S-N|186
+688|OR, NV, MA, Washington DC|186
+689|R.N|186
+690|Registered Nurse|186
+691|R-N|186
+692|RN.|186
+693|RN. R.N R-N|186
+694|URN|186
+695|R.P.A|187
+696|Registered Physician Assistant|187
+697|R-P-A|187
+698|R.P.H|188
+699|Registered Pharmacist|188
+700|R-P-H|188
+701|RPH.|188
+702|Administrative Assistant|189
+703|Activity Coordinator|190
+704|Administrative Assistant|191
+705|Associate Marriage and Family Therapist.|192
+706|Accounts Payable|193
+707|Back- Office Staff|194
+708|Billing Assistant|194
+709|Board Certified Diplomate in Clinical Social Work|195
+710|Alliance|196
+711|boehringer ingelheim|196
+712|Biller|197
+713|Coordinator|197
+714|Medical Billing Assistant|197
+715|Specialist|197
+716|Center Administrator|198
+717|Call Center|199
+718|Certified Clinical Hemodialysis Technician|200
+719|Certified Diabetes Educator|201
+720|Community Health Worker|202
+721|Clinical Lead|203
+722|Coder|204
+723|Coding|204
+724|Medical Billing and Coding Specialist|204
+725|Certified Office Assistant|205
+726|Certified Pharmacist Technitian|207
+727|Certified Pharmacist Technitian|208
+728|Customer Service Representative|209
+729|Dental Assistant|210
+730|Dietary Risk Assessment|211
+731|Outpatient Rehabilitation|212
+732|Diagnostic Medical Sonographer|213
+733|Dental Hygenist|214
+734|FO|215
+735|Front Desk|215
+736|Front Office|215
+737|Office Receptionist|215
+738|Receptionist|215
+739|Health Information Management|216
+740|Insurance|217
+741|Laboratory Technician|218
+742|Licensed Marriage and Family Therapist|219
+743|Lead Patient Service Representative.|220
+744|Licensed Social Worker|221
+745|CCMA|222
+746|CM|222
+747|CMAA|222
+748|Medical Assistant|222
+749|NCMA|222
+750|RMA|222
+751|MBA|223
+752|Medical Billing|223
+753|Medical Care Personnel|224
+754|Manager|225
+755|Mental Health Associate|226
+756|Medical lab supervisor|227
+757|Medical office representative|228
+758|Medical Office Staff|229
+759|Medical Records|230
+760|Medical Technologist|231
+761|National Certified Medical Assistant|232
+762|Office Manager|233
+763|Office Staff|234
+764|Participating Physician|235
+765|Practice Business Service Coordinator|236
+766|Phlebotomy Tech|237
+767|Patient Care Associate|238
+768|Patient Care Management|239
+769|Patient Care Tech|240
+770|PHAR.|241
+771|Pharmacist|241
+772|PharmD|241
+773|Phlebologist|243
+774|Practice Lead|244
+775|Practice Manager|245
+776|Patient Referral Coordinator|246
+777|Patient Resource Navigator|247
+778|Patient Service Associate|248
+779|Patient Service Coordinator|249
+780|Patient Service Representative|250
+781|Patient Service Specialist|251
+782|Psychiatry|252
+783|Doctor of Psychology|253
+784|Ref C|254
+785|Ref Coor|254
+786|Referral Coordinator|254
+787|Reception Desk|255
+788|Registered Dietitian|255
+789|Registered Dental Hygenist|256
+790|REC|257
+791|Receptionist|257
+792|Resident|258
+793|Registered Medical Assistant|259
+794|Registered Polysomnographic Technologists|260
+795|Registered Respiratory Therapist|261
+796|Registered Technologist in Radiology|262
+797|Respiratory Therapist|262
+798|RT R|262
+799|Radiation Triage|263
+800|Office Staff|264
+801|Technician|265
+802|Ultrasound Tech|266
+803|TAM|2
+804|BDS|3
+805|CDE|3
+806|CPT|3
+807|CRRA|3
+808|DAS|3
+809|DNH|3
+810|DVM|3
+811|FORM|3
+812|LNM|3
+813|LPN|3
+814|MHA|3
+815|MN|3
+816|MST|3
+817|MT|3
+818|OCN|3
+819|AMAS|3
+820|PACN|3
+821|PDMB|3
+822|PDMS|3
+823|PHRD|3
+824|RD|3
+825|RDH|3
+826|RN|3
+827|RPH|3
+828|RRT|3
+829|PAS|183

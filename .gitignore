@@ -6,3 +6,4 @@ temp/
 .env
 *.onnx
 *.json
+pages/
