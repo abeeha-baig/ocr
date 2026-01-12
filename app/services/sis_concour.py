@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 
 # CSV path
 csv_path = r"C:\Users\abeeha.baig\OneDrive - Qordata\Desktop\ocr\app\services\Extract_syneos_GSK_20251028000000_20251028051654.csv"
-
 # Signin image path
 signin_image_path = r"C:\Users\abeeha.baig\OneDrive - Qordata\Desktop\ocr\app\pages\2DBC20CE104A400AAB8D_HCP Spend_gWin$pt8sY00RZ$sJrt$pWJhKhvJKbxyeHgSdg_7025 - ST-US - GSK - Vacancy Management (0325)_2025-10-27T170222.733_20251028061146.png"
 # Load CSV
