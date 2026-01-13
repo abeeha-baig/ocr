@@ -17,6 +17,8 @@ Step 2: Read ALL credentials from the "CREDENTIALS" column (rightmost column) IN
 - Extract credentials EXACTLY as written in the image, character by character
 - Even if a credential looks unusual or abbreviated, extract it exactly as you see it
 - Pay close attention to periods, spaces, and capitalization
+- Try to create an understanding of the credential, sometimes there is faded ink and 'A' looks like 'H', so use your best judgement. 
+- Usual occuring credentials include: MD, CMA, etc.
 
 Step 3: Match names with credentials by their row position (1st name → 1st credential, 2nd name → 2nd credential, etc.)
 

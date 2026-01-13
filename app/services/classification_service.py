@@ -128,14 +128,21 @@ class ClassificationService:
         
         return results_df
     
-    def save_results(self, results_df, output_file="OCR_Results_Classified.xlsx"):
+    def save_results(self, results_df, expense_id=None, output_file=None):
         """
         Save classification results to Excel file.
         
         Args:
             results_df: DataFrame with classification results
-            output_file: Output Excel file path
+            expense_id: Optional expense ID to include in filename
+            output_file: Optional output Excel file path (overrides expense_id naming)
         """
+        if output_file is None:
+            if expense_id:
+                output_file = f"OCR_Results_Classified_{expense_id}.xlsx"
+            else:
+                output_file = "OCR_Results_Classified.xlsx"
+        
         results_df.to_excel(output_file, index=False)
         print(f"\n✅ Classified results saved to: {output_file}")
         
@@ -145,3 +152,5 @@ class ClassificationService:
         print(f"  HCP: {sum(results_df['Classification'] == 'HCP')}")
         print(f"  Field Employee: {sum(results_df['Classification'] == 'Field Employee')}")
         print(f"  Unknown: {sum(results_df['Classification'] == 'Unknown')}")
+        
+        return output_file

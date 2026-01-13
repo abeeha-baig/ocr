@@ -12,12 +12,15 @@ from app.clients.gemini_client import GeminiClient
 from app.services.image_processing_service import ImageProcessingService
 from app.services.classification_service import ClassificationService
 from app.services.data_extraction_service import DataExtractionService
+from app.services.credential_service import CredentialService
 from app.constants.prompts import OCR_SIGNIN_PROMPT
 from app.constants.config import (
     CSV_PATH, 
     SIGNIN_IMAGE_PATH, 
     CREDENTIAL_MAPPING_FILE,
-    OUTPUT_DIR
+    OUTPUT_DIR,
+    PROJECT_ROOT,
+    DB_CONFIG
 )
 
 
@@ -39,9 +42,27 @@ def main():
     hcp_names = data_service.get_hcp_names(expense_id)
     print(f"✓ Found {len(hcp_names)} HCP names: {hcp_names}")
     
+    # Check if credential mapping file exists, if not create it
+    credential_file_path = os.path.join(PROJECT_ROOT, CREDENTIAL_MAPPING_FILE)
+    
+    if not os.path.exists(credential_file_path):
+        print(f"\n⚠️  Credential mapping file not found: {CREDENTIAL_MAPPING_FILE}")
+        print("Creating credential mapping file from database (all companies and credentials)...")
+        
+        with CredentialService() as credential_service:
+            # Fetch all credential mappings (not filtered by company)
+            mapping_df = credential_service.get_possible_names_to_credential_mapping()
+            
+            # Save to Excel file
+            mapping_df.to_excel(credential_file_path, index=False)
+            print(f"✓ Created credential mapping file: {credential_file_path}")
+            print(f"✓ Total credential mappings: {len(mapping_df)}")
+    else:
+        print(f"✓ Credential mapping file exists: {CREDENTIAL_MAPPING_FILE}")
+    
     # Load HCP credentials (for reference only, not used in current flow)
     hcp_credentials_df, hcp_credential_mapping = data_service.load_hcp_credentials(
-        CREDENTIAL_MAPPING_FILE
+        credential_file_path
     )
     
     # Process image with OCR
