@@ -126,6 +126,19 @@ class ClassificationService:
         results_df['Credential_Standardized'] = matched_credentials
         results_df['Classification'] = classifications
         
+        # Post-processing: Remove duplicate names
+        results_df = self.remove_duplicate_names(results_df)
+        
+        return results_df
+    
+    def remove_duplicate_names(self, results_df):
+        """Keep first occurrence of each name, remove subsequent duplicates (case-insensitive)."""
+        if results_df.empty:
+            return results_df
+        
+        results_df['Name_Upper'] = results_df['Name'].str.upper()
+        results_df = results_df.drop_duplicates(subset=['Name_Upper'], keep='first')
+        results_df = results_df.drop(columns=['Name_Upper'])
         return results_df
     
     def save_results(self, results_df, expense_id=None, output_file=None):
