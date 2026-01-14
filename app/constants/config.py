@@ -20,7 +20,7 @@ SIGNIN_IMAGE_PATH = os.path.join(
 )
 
 # Credential mapping
-CREDENTIAL_MAPPING_FILE = "PossibleNames_to_Credential_Mapping.xlsx"
+CREDENTIAL_MAPPING_FILE = os.path.join(PROJECT_ROOT, "app", "tables", "PossibleNames_to_Credential_Mapping.xlsx")
 
 # Output directory
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "app", "output")

@@ -150,11 +150,15 @@ class ClassificationService:
             expense_id: Optional expense ID to include in filename
             output_file: Optional output Excel file path (overrides expense_id naming)
         """
+        import os
+        from app.constants.config import OUTPUT_DIR
+        
         if output_file is None:
+            os.makedirs(OUTPUT_DIR, exist_ok=True)
             if expense_id:
-                output_file = f"OCR_Results_Classified_{expense_id}.xlsx"
+                output_file = os.path.join(OUTPUT_DIR, f"OCR_Results_Classified_{expense_id}.xlsx")
             else:
-                output_file = "OCR_Results_Classified.xlsx"
+                output_file = os.path.join(OUTPUT_DIR, "OCR_Results_Classified.xlsx")
         
         results_df.to_excel(output_file, index=False)
         print(f"\n✅ Classified results saved to: {output_file}")

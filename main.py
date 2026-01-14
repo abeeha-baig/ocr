@@ -40,11 +40,13 @@ async def lifespan(app: FastAPI):
     print("Initializing services...")
     
     # Check if credential mapping file exists, if not create it FIRST
-    credential_file_path = os.path.join(PROJECT_ROOT, CREDENTIAL_MAPPING_FILE)
+    credential_file_path = CREDENTIAL_MAPPING_FILE
     
     if not os.path.exists(credential_file_path):
-        print(f"\n⚠️  Credential mapping file not found: {CREDENTIAL_MAPPING_FILE}")
+        print(f"\n⚠️  Credential mapping file not found: {credential_file_path}")
         print("Creating credential mapping file from database (all companies and credentials)...")
+        
+        os.makedirs(os.path.dirname(credential_file_path), exist_ok=True)
         
         with CredentialService() as credential_service:
             # Fetch all credential mappings (not filtered by company)
@@ -55,7 +57,7 @@ async def lifespan(app: FastAPI):
             print(f"✓ Created credential mapping file: {credential_file_path}")
             print(f"✓ Total credential mappings: {len(mapping_df)}")
     else:
-        print(f"✓ Credential mapping file exists: {CREDENTIAL_MAPPING_FILE}")
+        print(f"✓ Credential mapping file exists: {credential_file_path}")
     
     # Now initialize services (ClassificationService will load the file)
     data_service = DataExtractionService(CSV_PATH)
@@ -248,4 +250,4 @@ async def process_images(files: List[UploadFile] = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8080, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=8080, reload=False)
