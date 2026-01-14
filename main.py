@@ -37,40 +37,47 @@ async def lifespan(app: FastAPI):
     """Initialize services on startup."""
     global data_service, image_service, gemini_client, classification_service
     
-    print("Initializing services...")
-    
-    # Check if credential mapping file exists, if not create it FIRST
-    credential_file_path = CREDENTIAL_MAPPING_FILE
-    
-    if not os.path.exists(credential_file_path):
-        print(f"\n⚠️  Credential mapping file not found: {credential_file_path}")
-        print("Creating credential mapping file from database (all companies and credentials)...")
+    try:
+        print("Initializing services...")
         
-        os.makedirs(os.path.dirname(credential_file_path), exist_ok=True)
+        # Check if credential mapping file exists, if not create it FIRST
+        credential_file_path = CREDENTIAL_MAPPING_FILE
         
-        with CredentialService() as credential_service:
-            # Fetch all credential mappings (not filtered by company)
-            mapping_df = credential_service.get_possible_names_to_credential_mapping()
+        if not os.path.exists(credential_file_path):
+            print(f"\n⚠️  Credential mapping file not found: {credential_file_path}")
+            print("Creating credential mapping file from database (all companies and credentials)...")
             
-            # Save to Excel file
-            mapping_df.to_excel(credential_file_path, index=False)
-            print(f"✓ Created credential mapping file: {credential_file_path}")
-            print(f"✓ Total credential mappings: {len(mapping_df)}")
-    else:
-        print(f"✓ Credential mapping file exists: {credential_file_path}")
-    
-    # Now initialize services (ClassificationService will load the file)
-    data_service = DataExtractionService(CSV_PATH)
-    image_service = ImageProcessingService()
-    gemini_client = GeminiClient()
-    classification_service = ClassificationService(credential_file_path)
-    
-    # Load credentials once
-    data_service.load_hcp_credentials(credential_file_path)
-    
-    print("✓ Services initialized successfully")
-    yield
-    print("Shutting down...")
+            os.makedirs(os.path.dirname(credential_file_path), exist_ok=True)
+            
+            with CredentialService() as credential_service:
+                # Fetch all credential mappings (not filtered by company)
+                mapping_df = credential_service.get_possible_names_to_credential_mapping()
+                
+                # Save to Excel file
+                mapping_df.to_excel(credential_file_path, index=False)
+                print(f"✓ Created credential mapping file: {credential_file_path}")
+                print(f"✓ Total credential mappings: {len(mapping_df)}")
+        else:
+            print(f"✓ Credential mapping file exists: {credential_file_path}")
+        
+        # Now initialize services (ClassificationService will load the file)
+        data_service = DataExtractionService(CSV_PATH)
+        image_service = ImageProcessingService()
+        gemini_client = GeminiClient()
+        classification_service = ClassificationService(credential_file_path)
+        
+        # Load credentials once
+        data_service.load_hcp_credentials(credential_file_path)
+        
+        print("✓ Services initialized successfully")
+        yield
+    except KeyboardInterrupt:
+        print("\n⚠️  Interrupted by user")
+    except Exception as e:
+        print(f"\n❌ Error during startup: {e}")
+        yield
+    finally:
+        print("Shutting down...")
 
 
 app = FastAPI(
@@ -250,4 +257,22 @@ async def process_images(files: List[UploadFile] = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8080, reload=False)
+    import signal
+    import sys
+    
+    def signal_handler(sig, frame):
+        print("\n⚠️  Shutting down gracefully...")
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    try:
+        uvicorn.run(
+            "main:app",
+            host="127.0.0.1",
+            port=8080,
+            reload=True,
+            reload_dirs=["app"]
+        )
+    except (KeyboardInterrupt, SystemExit):
+        print("\n✓ Application stopped")

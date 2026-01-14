@@ -88,8 +88,8 @@ class ClassificationService:
             standardized = match.iloc[0]['Credential']
             return classification, standardized
         else:
-            # No match found in mapping file
-            return 'Unknown', credential_ocr
+            # No match found in mapping file - classify as Non-HCP
+            return 'Non-HCP', credential_ocr
     
     def classify_ocr_results(self, ocr_text):
         """
@@ -168,6 +168,6 @@ class ClassificationService:
         print(f"  Total entries: {len(results_df)}")
         print(f"  HCP: {sum(results_df['Classification'] == 'HCP')}")
         print(f"  Field Employee: {sum(results_df['Classification'] == 'Field Employee')}")
-        print(f"  Unknown: {sum(results_df['Classification'] == 'Unknown')}")
+        print(f"  Non-HCP: {sum(results_df['Classification'] == 'Non-HCP')}")
         
         return output_file
