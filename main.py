@@ -4,6 +4,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from typing import List
 import os
+import sys
 import tempfile
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -22,7 +23,9 @@ from app.constants.config import (
     CREDENTIAL_MAPPING_FILE,
     OUTPUT_DIR,
     PROJECT_ROOT,
-    DB_CONFIG
+    DB_CONFIG,
+    BATCH_SIZE,
+    MAX_WORKERS_PER_BATCH
 )
 
 # Initialize services once at startup
@@ -119,30 +122,41 @@ def process_single_image(image_path: str, filename: str) -> dict:
     """Process a single signin sheet image."""
     start_time = time.time()
     try:
+        print(f"\n{'='*60}", flush=True)
+        print(f"[START] Processing: {filename}", flush=True)
+        print(f"{'='*60}", flush=True)
+        
         # Extract expense ID from image filename
+        print(f"[STEP 1/6] Extracting expense ID from filename...", flush=True)
         expense_id = data_service.extract_expense_id_from_filename(image_path)
-        print(f"✓ Processing {filename} - Expense ID: {expense_id}")
+        print(f"✓ Expense ID: {expense_id}", flush=True)
         
         # Get HCP names for this expense
         hcp_names = data_service.get_hcp_names(expense_id)
         print(f"✓ Found {len(hcp_names)} HCP names: {hcp_names}")
         
         # Process image with OCR
+        print(f"[STEP 3/6] Processing image (deskewing and enhancement)...", flush=True)
         processed_image = image_service.deskew_image(image_path)
+        print(f"✓ Image preprocessing complete", flush=True)
         
         # Prepare prompt with HCP names
         prompt = OCR_SIGNIN_PROMPT.format(HCPs=hcp_names)
         
         # Run OCR
-        print(f"Running OCR on {filename}...")
+        print(f"[STEP 4/6] Running Gemini OCR (this may take 10-30 seconds)...", flush=True)
         ocr_results = gemini_client.process_ocr(prompt, processed_image)
+        print(f"✓ OCR complete, extracted {len(ocr_results.split(chr(10)))} lines", flush=True)
         
         # Classify credentials
-        print(f"Classifying credentials for {filename}...")
+        print(f"[STEP 5/6] Classifying credentials...", flush=True)
         classified_results = classification_service.classify_ocr_results(ocr_results)
+        print(f"✓ Classification complete: {len(classified_results)} records", flush=True)
         
         # Save results
+        print(f"[STEP 6/6] Saving results to file...", flush=True)
         output_filename = classification_service.save_results(classified_results, expense_id)
+        print(f"✓ Results saved to: {output_filename}", flush=True)
         
         # Format results in a cleaner way
         names_found = []
@@ -154,6 +168,8 @@ def process_single_image(image_path: str, filename: str) -> dict:
                 names_found.append(f"{name}, {credential} [{classification}]")
         
         processing_time = time.time() - start_time
+        print(f"\n[COMPLETE] {filename} processed in {processing_time:.2f}s", flush=True)
+        print(f"{'='*60}\n", flush=True)
         return {
             "filename": filename,
             "names_found": names_found,
@@ -162,7 +178,8 @@ def process_single_image(image_path: str, filename: str) -> dict:
         
     except Exception as e:
         processing_time = time.time() - start_time
-        print(f"❌ Error processing {filename}: {str(e)}")
+        print(f"\n❌ [ERROR] Failed processing {filename}: {str(e)}", flush=True)
+        print(f"{'='*60}\n", flush=True)
         return {
             "filename": filename,
             "names_found": [],
@@ -199,29 +216,68 @@ async def process_images(files: List[UploadFile] = File(...)):
     total_start_time = time.time()
     
     try:
-        print(f"\n{'='*60}")
-        print(f"Processing {len(files)} image(s) in PARALLEL")
-        print(f"{'='*60}\n")
+        print(f"\n{'='*60}", flush=True)
+        print(f"API REQUEST: Processing {len(files)} image(s) in PARALLEL", flush=True)
+        print(f"{'='*60}\n", flush=True)
         
         # Save all files first
+        print(f"[UPLOAD] Saving uploaded files to temporary directory...", flush=True)
         file_paths = []
-        for file in files:
+        for idx, file in enumerate(files, 1):
             temp_path = os.path.join(temp_dir, file.filename)
             with open(temp_path, "wb") as buffer:
                 content = await file.read()
                 buffer.write(content)
             file_paths.append((temp_path, file.filename))
+            print(f"  [{idx}/{len(files)}] Saved: {file.filename}", flush=True)
+        print(f"✓ All files saved to temp directory\n", flush=True)
         
-        # Process all images in parallel using ThreadPoolExecutor
+        # Process images in batches with threading
+        total_images = len(file_paths)
+        num_batches = (total_images + BATCH_SIZE - 1) // BATCH_SIZE  # Ceiling division
+        
+        print(f"[PROCESSING] Processing {total_images} images in {num_batches} batch(es)")
+        print(f"Batch size: {BATCH_SIZE}, Workers per batch: {MAX_WORKERS_PER_BATCH}\n", flush=True)
+        
         loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor(max_workers=min(len(files), 5)) as executor:
-            # Submit all tasks
-            tasks = [
-                loop.run_in_executor(executor, process_single_image, path, filename)
-                for path, filename in file_paths
-            ]
-            # Wait for all to complete
-            results = await asyncio.gather(*tasks)
+        all_results = []
+        
+        for batch_num in range(num_batches):
+            start_idx = batch_num * BATCH_SIZE
+            end_idx = min(start_idx + BATCH_SIZE, total_images)
+            batch_files = file_paths[start_idx:end_idx]
+            
+            print(f"{'='*60}", flush=True)
+            print(f"[BATCH {batch_num + 1}/{num_batches}] Processing images {start_idx + 1}-{end_idx} of {total_images}", flush=True)
+            print(f"{'='*60}\n", flush=True)
+            
+            batch_start_time = time.time()
+            
+            # Process batch in parallel
+            with ThreadPoolExecutor(max_workers=MAX_WORKERS_PER_BATCH) as executor:
+                tasks = [
+                    loop.run_in_executor(executor, process_single_image, path, filename)
+                    for path, filename in batch_files
+                ]
+                batch_results = await asyncio.gather(*tasks)
+            
+            # Track batch statistics
+            batch_time = time.time() - batch_start_time
+            batch_successful = sum(1 for r in batch_results if "error" not in r)
+            batch_failed = len(batch_results) - batch_successful
+            
+            all_results.extend(batch_results)
+            
+            print(f"\n{'='*60}", flush=True)
+            print(f"[BATCH {batch_num + 1}/{num_batches} COMPLETE]", flush=True)
+            print(f"  Processed: {len(batch_results)} images", flush=True)
+            print(f"  Successful: {batch_successful}", flush=True)
+            print(f"  Failed: {batch_failed}", flush=True)
+            print(f"  Time: {batch_time:.2f}s", flush=True)
+            print(f"  Avg per image: {batch_time/len(batch_results):.2f}s", flush=True)
+            print(f"{'='*60}\n", flush=True)
+        
+        results = all_results
         
         # Summary
         total_time = time.time() - total_start_time
@@ -268,11 +324,11 @@ if __name__ == "__main__":
     
     try:
         uvicorn.run(
-            "main:app",
+            app,
             host="127.0.0.1",
             port=8080,
-            reload=True,
-            reload_dirs=["app"]
+            reload=False,
+            log_level="info"
         )
     except (KeyboardInterrupt, SystemExit):
         print("\n✓ Application stopped")
