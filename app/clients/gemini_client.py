@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 class GeminiClient:
     """Client for interacting with Google Gemini API."""
     
-    def __init__(self, model_name="gemini-2.5-flash"):
+    def __init__(self, model_name="gemini-3-flash-preview"):
         """
         Initialize Gemini client.
         

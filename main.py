@@ -17,6 +17,7 @@ from app.services.image_processing_service import ImageProcessingService
 from app.services.classification_service import ClassificationService
 from app.services.data_extraction_service import DataExtractionService
 from app.services.credential_service import CredentialService
+from app.services.pdf_processing_service import PDFProcessingService
 from app.constants.prompts import OCR_SIGNIN_PROMPT
 from app.constants.config import (
     CSV_PATH, 
@@ -25,7 +26,9 @@ from app.constants.config import (
     PROJECT_ROOT,
     DB_CONFIG,
     BATCH_SIZE,
-    MAX_WORKERS_PER_BATCH
+    MAX_WORKERS_PER_BATCH,
+    INPUT_DIR,
+    PAGES_DIR
 )
 
 # Initialize services once at startup
@@ -33,12 +36,14 @@ data_service = None
 image_service = None
 gemini_client = None
 classification_service = None
+pdf_processing_service = None
+signin_image_paths = []  # Store paths of signin images to process
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize services on startup."""
-    global data_service, image_service, gemini_client, classification_service
+    global data_service, image_service, gemini_client, classification_service, pdf_processing_service, signin_image_paths
     
     try:
         print("Initializing services...")
@@ -68,11 +73,14 @@ async def lifespan(app: FastAPI):
         image_service = ImageProcessingService()
         gemini_client = GeminiClient()
         classification_service = ClassificationService(credential_file_path)
+        pdf_processing_service = PDFProcessingService(gemini_client, PAGES_DIR)
         
         # Load credentials once
         data_service.load_hcp_credentials(credential_file_path)
         
         print("✓ Services initialized successfully")
+        print("✓ Ready to process PDFs via API\n")
+        
         yield
     except KeyboardInterrupt:
         print("\n⚠️  Interrupted by user")
@@ -99,7 +107,7 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "health": "/health",
-            "process_images": "/process-images (POST)"
+            "process_images": "/process-images (POST) - Upload PDF files to process"
         }
     }
 
@@ -145,6 +153,7 @@ def process_single_image(image_path: str, filename: str) -> dict:
         
         # Run OCR
         print(f"[STEP 4/6] Running Gemini OCR (this may take 10-30 seconds)...", flush=True)
+        print(f"🤖 Using model: {gemini_client.model_name} for OCR", flush=True)
         ocr_results = gemini_client.process_ocr(prompt, processed_image)
         print(f"✓ OCR complete, extracted {len(ocr_results.split(chr(10)))} lines", flush=True)
         
@@ -153,12 +162,7 @@ def process_single_image(image_path: str, filename: str) -> dict:
         classified_results = classification_service.classify_ocr_results(ocr_results)
         print(f"✓ Classification complete: {len(classified_results)} records", flush=True)
         
-        # Save results
-        print(f"[STEP 6/6] Saving results to file...", flush=True)
-        output_filename = classification_service.save_results(classified_results, expense_id)
-        print(f"✓ Results saved to: {output_filename}", flush=True)
-        
-        # Format results in a cleaner way
+        # Format results in a cleaner way (don't save yet)
         names_found = []
         if not classified_results.empty:
             for _, row in classified_results.iterrows():
@@ -172,7 +176,9 @@ def process_single_image(image_path: str, filename: str) -> dict:
         print(f"{'='*60}\n", flush=True)
         return {
             "filename": filename,
+            "expense_id": expense_id,
             "names_found": names_found,
+            "classified_results": classified_results,
             "processing_time_seconds": round(processing_time, 2)
         }
         
@@ -182,7 +188,9 @@ def process_single_image(image_path: str, filename: str) -> dict:
         print(f"{'='*60}\n", flush=True)
         return {
             "filename": filename,
+            "expense_id": None,
             "names_found": [],
+            "classified_results": None,
             "processing_time_seconds": round(processing_time, 2),
             "error": str(e)
         }
@@ -191,25 +199,24 @@ def process_single_image(image_path: str, filename: str) -> dict:
 @app.post("/process-images")
 async def process_images(files: List[UploadFile] = File(...)):
     """
-    Process multiple signin sheet images.
+    Process multiple PDF files: extract pages, classify as signin/dinein, and process signin pages.
     
     Args:
-        files: List of image files to process
+        files: List of PDF files to process
         
     Returns:
-        JSON response with processing results for each image
+        JSON response with processing results for each signin page
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
     
-    # Validate file types
-    allowed_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp', '.gif'}
+    # Validate file types - only PDFs
     for file in files:
         file_ext = Path(file.filename).suffix.lower()
-        if file_ext not in allowed_extensions:
+        if file_ext != '.pdf':
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid file type: {file.filename}. Allowed: {', '.join(allowed_extensions)}"
+                detail=f"Invalid file type: {file.filename}. Only PDF files are accepted."
             )
     
     temp_dir = tempfile.mkdtemp()
@@ -217,20 +224,43 @@ async def process_images(files: List[UploadFile] = File(...)):
     
     try:
         print(f"\n{'='*60}", flush=True)
-        print(f"API REQUEST: Processing {len(files)} image(s) in PARALLEL", flush=True)
+        print(f"API REQUEST: Processing {len(files)} PDF file(s)", flush=True)
         print(f"{'='*60}\n", flush=True)
         
-        # Save all files first
-        print(f"[UPLOAD] Saving uploaded files to temporary directory...", flush=True)
-        file_paths = []
+        # Save all PDF files first
+        print(f"[UPLOAD] Saving uploaded PDF files to temporary directory...", flush=True)
+        pdf_paths = []
         for idx, file in enumerate(files, 1):
             temp_path = os.path.join(temp_dir, file.filename)
             with open(temp_path, "wb") as buffer:
                 content = await file.read()
                 buffer.write(content)
-            file_paths.append((temp_path, file.filename))
+            pdf_paths.append(temp_path)
             print(f"  [{idx}/{len(files)}] Saved: {file.filename}", flush=True)
-        print(f"✓ All files saved to temp directory\n", flush=True)
+        print(f"✓ All PDF files saved to temp directory\n", flush=True)
+        
+        # Process PDFs to extract and classify pages
+        print(f"[PDF PROCESSING] Extracting and classifying pages...", flush=True)
+        all_signin_pages = []
+        for pdf_path in pdf_paths:
+            try:
+                results = pdf_processing_service.process_pdf(pdf_path)
+                signin_pages = results.get('signin', [])
+                all_signin_pages.extend(signin_pages)
+                print(f"  ✓ {Path(pdf_path).name}: {len(signin_pages)} signin page(s) extracted", flush=True)
+            except Exception as e:
+                print(f"  ⚠️  Failed to process {Path(pdf_path).name}: {e}", flush=True)
+        
+        if not all_signin_pages:
+            raise HTTPException(
+                status_code=404,
+                detail="No signin pages found in the uploaded PDFs"
+            )
+        
+        print(f"\n✓ Total signin pages to process: {len(all_signin_pages)}\n", flush=True)
+        
+        # Now process the signin pages
+        file_paths = [(path, Path(path).name) for path in all_signin_pages]
         
         # Process images in batches with threading
         total_images = len(file_paths)
@@ -279,24 +309,70 @@ async def process_images(files: List[UploadFile] = File(...)):
         
         results = all_results
         
+        # Group results by expense ID and combine classified data
+        print(f"\n{'='*60}", flush=True)
+        print(f"[COMBINING RESULTS] Grouping by expense ID...", flush=True)
+        print(f"{'='*60}\n", flush=True)
+        
+        expense_groups = {}
+        for result in results:
+            if "error" in result or result.get('classified_results') is None:
+                continue
+            
+            expense_id = result['expense_id']
+            if expense_id not in expense_groups:
+                expense_groups[expense_id] = []
+            expense_groups[expense_id].append(result['classified_results'])
+        
+        # Combine and save results per expense ID
+        saved_files = []
+        for expense_id, results_list in expense_groups.items():
+            # Combine all DataFrames for this expense ID
+            import pandas as pd
+            combined_df = pd.concat(results_list, ignore_index=True)
+            
+            # Remove duplicates across all pages
+            combined_df = classification_service.remove_duplicate_names(combined_df)
+            
+            # Save combined results
+            output_file = classification_service.save_results(combined_df, expense_id)
+            saved_files.append(output_file)
+            print(f"  ✓ Saved {len(combined_df)} records for expense ID: {expense_id}")
+        
         # Summary
         total_time = time.time() - total_start_time
         successful = sum(1 for r in results if "error" not in r)
         failed = len(results) - successful
         
         print(f"\n{'='*60}")
-        print(f"✅ Batch processing complete!")
-        print(f"Successful: {successful}/{len(files)}")
-        print(f"Failed: {failed}/{len(files)}")
+        print(f"✅ PDF processing complete!")
+        print(f"PDFs uploaded: {len(files)}")
+        print(f"Signin pages processed: {len(all_signin_pages)}")
+        print(f"Successful: {successful}/{len(all_signin_pages)}")
+        print(f"Failed: {failed}/{len(all_signin_pages)}")
+        print(f"Unique expense IDs: {len(expense_groups)}")
+        print(f"Output files saved: {len(saved_files)}")
         print(f"Total time: {total_time:.2f}s")
         print(f"{'='*60}")
         
+        # Clean results for response (remove classified_results DataFrames)
+        response_results = []
+        for r in results:
+            r_copy = r.copy()
+            if 'classified_results' in r_copy:
+                del r_copy['classified_results']
+            response_results.append(r_copy)
+        
         return JSONResponse(content={
             "total_processing_time_seconds": round(total_time, 2),
-            "images_processed": len(files),
+            "pdfs_uploaded": len(files),
+            "signin_pages_extracted": len(all_signin_pages),
+            "signin_pages_processed": len(all_signin_pages),
             "successful": successful,
             "failed": failed,
-            "results": results
+            "unique_expense_ids": len(expense_groups),
+            "output_files": saved_files,
+            "results": response_results
         })
         
     except Exception as e:

@@ -1,15 +1,17 @@
-# OCR Application - Modular Architecture
+# OCR Application - PDF Processing & Signin Classification
 
-A production-ready OCR application for processing healthcare signin sheets with credential classification.
+A production-ready OCR application for processing healthcare signin sheets with credential classification. Now supports **PDF input with automatic page classification**.
 
 ## ✅ Project Overview
 
-This application extracts names and credentials from signin sheet images using Google Gemini AI, then classifies credentials using rule-based matching against a database of known medical credentials.
+This application processes PDF documents containing signin and dinein pages, automatically classifies them, and extracts names and credentials from signin sheets using Google Gemini AI with rule-based credential classification.
 
 ### Key Features
 
+- **PDF Processing**: Automatic conversion of PDFs to images and page classification
+- **Page Classification**: AI-powered classification of signin vs dinein pages using Gemini 2.0 Flash Lite
 - **Image Preprocessing**: Automatic deskewing and enhancement for better OCR accuracy
-- **AI-Powered OCR**: Google Gemini 2.5 Flash for text extraction
+- **AI-Powered OCR**: Google Gemini 2.5 Flash for text extraction from signin pages
 - **Rule-Based Classification**: Deterministic credential matching (no AI inference)
 - **Modular Architecture**: Clean separation of concerns with reusable services
 - **Database Integration**: SQL Server connection for credential lookups
@@ -38,16 +40,18 @@ ocr-2/
 │   │   ├── data_extraction_service.py   # CSV data processing
 │   │   ├── database.py                  # Database connection manager
 │   │   ├── image_processing_service.py  # Image preprocessing
+│   │   ├── pdf_processing_service.py    # PDF splitting & classification
 │   │   └── sis_concour.py              # Main orchestration
 │   │
-│   ├── input/                      # Input files
-│   ├── output/                     # Output files
-│   ├── pages/                      # Image files
+│   ├── input/                      # PDF input files
+│   ├── output/                     # Output Excel files
+│   ├── pages/                      # Extracted page images (signin/dinein)
 │   ├── tables/                     # CSV data files
 │   └── models/                     # Data models (future)
 │
 ├── test_db_connection.py
 ├── test_persistent_connection.py
+├── test_pdf_processing.py         # Test PDF processing pipeline
 ├── PossibleNames_to_Credential_Mapping.xlsx
 ├── .env                            # API keys and credentials
 ├── ARCHITECTURE.md                 # Detailed architecture docs
@@ -81,7 +85,9 @@ conda activate test-env
 
 3. **Install dependencies**
 ```bash
-pip install pandas google-generativeai pillow opencv-python numpy python-dotenv pymssql openpyxl
+pip install -r requirements.txt
+# Or install manually:
+pip install pandas google-generativeai pillow opencv-python numpy python-dotenv pymssql openpyxl PyMuPDF fastapi uvicorn
 ```
 
 4. **Configure environment variables**
@@ -94,15 +100,61 @@ DB_USER=your_db_user
 DB_PASSWORD=your_db_password
 ```
 
+5. **Prepare input directory**
+```bash
+# Create input directory if it doesn't exist
+mkdir -p app/input
+# Place your PDF files in app/input/
+```
+
 ### Running the Application
+
+#### Option 1: API Server (Recommended)
+
+Start the FastAPI server:
+```bash
+python main.py
+```
+
+The server will:
+1. Process all PDFs in `app/input/` on startup
+2. Extract and classify pages (signin vs dinein)
+3. Make signin images available for processing
+
+**API Endpoints:**
+- `GET /` - API information
+- `GET /health` - Health check
+- `POST /process-signin-pages` - Process all signin pages from PDFs
+- `POST /process-images` - Process uploaded image files
+
+**Example API Usage:**
+```bash
+# Process signin pages extracted from PDFs
+curl -X POST http://127.0.0.1:8080/process-signin-pages
+
+# Or upload images directly
+curl -X POST http://127.0.0.1:8080/process-images \
+  -F "files=@image1.png" \
+  -F "files=@image2.png"
+```
+
+#### Option 2: Standalone Script
 
 ```bash
 python app/services/sis_concour.py
 ```
 
+#### Option 3: Test PDF Processing
+
+Test the PDF processing pipeline:
+```bash
+python test_pdf_processing.py
+```
+
 **Output:**
 - Console: Progress updates and OCR results
-- File: `OCR_Results_Classified.xlsx` with classified credentials
+- Images: Extracted pages in `app/pages/` (with signin/dinein classification)
+- Excel: `app/output/OCR_Results_Classified_{expense_id}_{timestamp}.xlsx`
 
 ---
 
@@ -120,6 +172,7 @@ python app/services/sis_concour.py
 - **prompts.py**: All AI/OCR prompts stored as constants
 
 #### 3. **services/** - Business Logic
+- **pdf_processing_service.py**: PDF splitting, page extraction, and classification
 - **image_processing_service.py**: Image preprocessing (deskewing, enhancement)
 - **data_extraction_service.py**: CSV data handling and HCP name extraction
 - **classification_service.py**: Rule-based credential classification
@@ -130,22 +183,49 @@ python app/services/sis_concour.py
 ### Workflow
 
 ```
-CSV Data + Image File
+PDF Files in app/input/
         ↓
-DataExtractionService → Extract HCP names
+PDF Processing Service
+    - Split PDF into pages
+    - Save as {pdf_name}_page_{n}.png
         ↓
-ImageProcessingService → Deskew & enhance image
+Page Classification (Gemini 2.0 Flash Lite)
+    - Analyze each page
+    - Classify as signin or dinein
+    - Rename: {pdf_name}_page_{n}_signin.png or _dinein.png
         ↓
-GeminiClient → OCR extraction
+Signin Pages → Processing Pipeline
+    |
+    ├→ DataExtractionService → Extract HCP names (from CSV by expense ID)
+    ├→ ImageProcessingService → Deskew & enhance image
+    ├→ GeminiClient (2.5 Flash) → OCR extraction
+    ├→ ClassificationService → Classify credentials
+    └→ Excel Output (grouped by expense ID)
         ↓
-ClassificationService → Classify credentials
-        ↓
-Excel Output
+Dinein Pages → Stored for future processing
 ```
+
+**Expense ID Extraction**: 
+- Filename format: `{ID}_HCP Spend_{EXPENSE_ID}_{OTHER_DATA}.pdf`
+- Expense ID is extracted from the 3rd part (after 2nd underscore)
+- Signin pages with same expense ID are merged in output
 
 ---
 
 ## 📊 Features in Detail
+
+### PDF Processing
+- **Automatic page splitting**: Converts PDF pages to high-quality images (300 DPI)
+- **Page classification**: Uses Gemini 2.0 Flash Lite to classify signin vs dinein pages
+- **Expense ID extraction**: Parses expense ID from PDF filename automatically
+- **Batch processing**: Handles multiple PDFs and pages efficiently
+- **Error handling**: Graceful failure with detailed error messages
+
+### Page Classification (AI-Powered)
+- **Model**: Gemini 2.0 Flash Lite (fast and cost-effective)
+- **Signin page detection**: Looks for keywords like "name", "signature", "credential"
+- **Dinein page detection**: Identifies menu items, prices, restaurant information
+- **Naming convention**: Pages saved as `{pdf_name}_page_{n}_{classification}.png`
 
 ### Image Processing
 - **Automatic deskewing**: Detects rotation angles < 10°
@@ -157,7 +237,7 @@ Excel Output
 - **Structured prompts**: Separate column processing
 - **HCP name reference**: Uses expected names for better accuracy
 
-### Classification
+### Credential Classification
 - **Rule-based matching**: Exact string lookup (no AI)
 - **Two-stage matching**: PossibleNames → Credential columns
 - **Case-insensitive**: Normalized comparisons

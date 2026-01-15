@@ -12,8 +12,9 @@ CSV_PATH = os.path.join(
     "Extract_syneos_GSK_20251028000000_20251028051654.csv"
 )
 
-# Image paths
-PAGES_DIR = os.path.join(PROJECT_ROOT, "app", "pages")
+# Directory paths
+INPUT_DIR = os.path.join(PROJECT_ROOT, "app", "input")  # PDF input directory
+PAGES_DIR = os.path.join(PROJECT_ROOT, "app", "pages")  # Extracted page images
 SIGNIN_IMAGE_PATH = os.path.join(
     PAGES_DIR,
     "2DBC20CE104A400AAB8D_HCP Spend_gWin$pt8sY00RZ$sJrt$pWJhKhvJKbxyeHgSdg_7025 - ST-US - GSK - Vacancy Management (0325)_2025-10-27T170222.733_20251028061146.png"
