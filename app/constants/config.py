@@ -44,3 +44,6 @@ DB_CONFIG = {
 BATCH_SIZE = 50  # Number of images to process per batch (increased for faster processing)
 MAX_WORKERS_PER_BATCH = 15  # Maximum parallel threads per batch (increased for better parallelism)
 # For 100 images: 2 batches × 15 workers = faster processing with controlled resource usage
+
+# Fuzzy matching configuration
+FUZZY_MATCH_THRESHOLD = 80  # Minimum similarity score (0-100) for credential fuzzy matching

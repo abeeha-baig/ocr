@@ -20,7 +20,8 @@ from app.constants.config import (
     CREDENTIAL_MAPPING_FILE,
     OUTPUT_DIR,
     PROJECT_ROOT,
-    DB_CONFIG
+    DB_CONFIG,
+    FUZZY_MATCH_THRESHOLD
 )
 
 
@@ -32,7 +33,7 @@ def main():
     data_service = DataExtractionService(CSV_PATH)
     image_service = ImageProcessingService()
     gemini_client = GeminiClient()
-    classification_service = ClassificationService(CREDENTIAL_MAPPING_FILE)
+    classification_service = ClassificationService(CREDENTIAL_MAPPING_FILE, fuzzy_threshold=FUZZY_MATCH_THRESHOLD)
     
     # Extract expense ID from image filename
     expense_id = data_service.extract_expense_id_from_filename(SIGNIN_IMAGE_PATH)
@@ -47,11 +48,11 @@ def main():
     
     if not os.path.exists(credential_file_path):
         print(f"\n⚠️  Credential mapping file not found: {CREDENTIAL_MAPPING_FILE}")
-        print("Creating credential mapping file from database (all companies and credentials)...")
+        print("Creating credential mapping file from database (including CredentialOCR data)...")
         
         with CredentialService() as credential_service:
-            # Fetch all credential mappings (not filtered by company)
-            mapping_df = credential_service.get_possible_names_to_credential_mapping()
+            # Fetch combined mappings (PossibleNames + CredentialOCR)
+            mapping_df = credential_service.get_combined_credential_mapping()
             
             # Save to Excel file
             mapping_df.to_excel(credential_file_path, index=False)

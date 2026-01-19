@@ -45,22 +45,160 @@ class CredentialService:
         """
         Get mapping between PossibleNames and Credentials.
         Joins tbl_Credential_PossibleNames with tbl_CredentialClassification.
+        Uses LEFT JOIN to include all PossibleNames, even if CredentialID doesn't exist.
         Returns: DataFrame with PossibleNames and their corresponding Credentials
         """
         query = """
         SELECT 
             pn.PossibleNames,
-            cc.Credential,
-            cc.Classification,
+            ISNULL(cc.Credential, 'UNKNOWN') AS Credential,
+            ISNULL(cc.Classification, 'Non-HCP') AS Classification,
             cc.company_id,
             cc.precedence_in_classification
         FROM tbl_Credential_PossibleNames pn
-        INNER JOIN tbl_CredentialClassification cc 
+        LEFT JOIN tbl_CredentialClassification cc 
             ON pn.CredentialID = cc.ID
         ORDER BY cc.Credential, pn.PossibleNames
         """
         df = self.db.fetch_to_dataframe(query)
         return df
+    
+    def get_credential_ocr_mapping(self):
+        """
+        Get CredentialOCR mapping from tbl_SIS_CredentialMapping.
+        Traces CredentialMapping value through the lookup chain:
+        1. Check if CredentialMapping exists in tbl_Credential_PossibleNames -> get CredentialID -> get Credential
+        2. If not, check if CredentialMapping exists directly in tbl_CredentialClassification.Credential
+        3. If not found, defaults to 'Non-HCP'
+        Returns: DataFrame with CredentialOCR as PossibleNames and final Credential
+        """
+        query = """
+        SELECT 
+            scm.CredentialOCR AS PossibleNames,
+            scm.CredentialMapping
+        FROM tbl_SIS_CredentialMapping scm
+        WHERE scm.CredentialOCR IS NOT NULL 
+            AND scm.CredentialOCR != ''
+            AND scm.CredentialMapping IS NOT NULL
+            AND scm.CredentialMapping != ''
+        ORDER BY scm.CredentialMapping, scm.CredentialOCR
+        """
+        df = self.db.fetch_to_dataframe(query)
+        
+        if df.empty:
+            return df
+        
+        # For each CredentialMapping, trace it through the lookup chain
+        results = []
+        unique_mappings = df['CredentialMapping'].unique()
+        
+        print(f"  Tracing {len(unique_mappings)} unique CredentialMapping values through lookup chain...")
+        
+        for mapping_value in unique_mappings:
+            # Step 1: Check if CredentialMapping exists in tbl_Credential_PossibleNames
+            lookup_query1 = """
+            SELECT pn.CredentialID, cc.Credential, cc.Classification, cc.company_id, cc.precedence_in_classification
+            FROM tbl_Credential_PossibleNames pn
+            INNER JOIN tbl_CredentialClassification cc ON pn.CredentialID = cc.ID
+            WHERE pn.PossibleNames = %s
+            """
+            result1 = self.db.fetch_to_dataframe(lookup_query1, params=(mapping_value,))
+            
+            if not result1.empty:
+                # Found in PossibleNames -> follow the CredentialID chain
+                results.append({
+                    'mapping_value': mapping_value,
+                    'credential': result1.iloc[0]['Credential'],
+                    'classification': result1.iloc[0]['Classification'],
+                    'company_id': result1.iloc[0]['company_id'],
+                    'precedence': result1.iloc[0]['precedence_in_classification'],
+                    'method': 'via_possiblenames'
+                })
+                continue
+            
+            # Step 2: Check if CredentialMapping exists directly in tbl_CredentialClassification.Credential
+            lookup_query2 = """
+            SELECT Credential, Classification, company_id, precedence_in_classification
+            FROM tbl_CredentialClassification
+            WHERE Credential = %s
+            """
+            result2 = self.db.fetch_to_dataframe(lookup_query2, params=(mapping_value,))
+            
+            if not result2.empty:
+                # Found directly in Credential
+                results.append({
+                    'mapping_value': mapping_value,
+                    'credential': result2.iloc[0]['Credential'],
+                    'classification': result2.iloc[0]['Classification'],
+                    'company_id': result2.iloc[0]['company_id'],
+                    'precedence': result2.iloc[0]['precedence_in_classification'],
+                    'method': 'direct_credential'
+                })
+                continue
+            
+            # Step 3: Not found anywhere - default to Non-HCP
+            results.append({
+                'mapping_value': mapping_value,
+                'credential': mapping_value,  # Keep original value
+                'classification': 'Non-HCP',
+                'company_id': None,
+                'precedence': None,
+                'method': 'not_found'
+            })
+        
+        # Create lookup dictionary
+        lookup_dict = {r['mapping_value']: r for r in results}
+        
+        # Apply to all rows
+        df['Credential'] = df['CredentialMapping'].map(lambda x: lookup_dict[x]['credential'])
+        df['Classification'] = df['CredentialMapping'].map(lambda x: lookup_dict[x]['classification'])
+        df['company_id'] = df['CredentialMapping'].map(lambda x: lookup_dict[x]['company_id'])
+        df['precedence_in_classification'] = df['CredentialMapping'].map(lambda x: lookup_dict[x]['precedence'])
+        
+        # Drop the CredentialMapping column as it's no longer needed
+        df = df.drop(columns=['CredentialMapping'])
+        
+        # Count by method
+        method_counts = {}
+        for r in results:
+            method_counts[r['method']] = method_counts.get(r['method'], 0) + 1
+        
+        print(f"  ✓ Traced through PossibleNames: {method_counts.get('via_possiblenames', 0)}")
+        print(f"  ✓ Found directly in Credential: {method_counts.get('direct_credential', 0)}")
+        print(f"  ✓ Defaulted to Non-HCP: {method_counts.get('not_found', 0)}")
+        
+        return df
+    
+    def get_combined_credential_mapping(self):
+        """
+        Get combined mapping with both PossibleNames and CredentialOCR.
+        Combines data from tbl_Credential_PossibleNames and tbl_SIS_CredentialMapping.
+        Returns: DataFrame with all possible credential variations
+        """
+        import pandas as pd
+        
+        # Get PossibleNames mappings
+        possible_names_df = self.get_possible_names_to_credential_mapping()
+        print(f"  From tbl_Credential_PossibleNames: {len(possible_names_df)} rows")
+        
+        # Get CredentialOCR mappings
+        ocr_mapping_df = self.get_credential_ocr_mapping()
+        print(f"  From tbl_SIS_CredentialMapping: {len(ocr_mapping_df)} rows")
+        
+        # Combine both DataFrames
+        combined_df = pd.concat([possible_names_df, ocr_mapping_df], ignore_index=True)
+        print(f"  Combined total: {len(combined_df)} rows")
+        
+        # Remove duplicates (same PossibleName + Credential combination)
+        # This is intentional - if the same variation appears in both tables, we only need it once
+        # combined_df = combined_df.drop_duplicates(subset=['PossibleNames', 'Credential'], keep='first')
+        # print(f"  After removing duplicates: {len(combined_df)} rows")
+        # print(f"  ✓ Removed {len(possible_names_df) + len(ocr_mapping_df) - len(combined_df)} duplicate PossibleName+Credential pairs")
+        
+        # Sort by Credential and PossibleNames
+        combined_df = combined_df.sort_values(['Credential', 'PossibleNames']).reset_index(drop=True)
+        
+        return combined_df
     
     def get_credential_mapping_dict(self):
         """

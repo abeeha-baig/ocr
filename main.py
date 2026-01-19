@@ -28,7 +28,8 @@ from app.constants.config import (
     BATCH_SIZE,
     MAX_WORKERS_PER_BATCH,
     INPUT_DIR,
-    PAGES_DIR
+    PAGES_DIR,
+    FUZZY_MATCH_THRESHOLD
 )
 
 # Initialize services once at startup
@@ -53,18 +54,19 @@ async def lifespan(app: FastAPI):
         
         if not os.path.exists(credential_file_path):
             print(f"\n⚠️  Credential mapping file not found: {credential_file_path}")
-            print("Creating credential mapping file from database (all companies and credentials)...")
+            print("Creating credential mapping file from database (including CredentialOCR data)...")
             
             os.makedirs(os.path.dirname(credential_file_path), exist_ok=True)
             
             with CredentialService() as credential_service:
-                # Fetch all credential mappings (not filtered by company)
-                mapping_df = credential_service.get_possible_names_to_credential_mapping()
+                # Fetch combined mappings (PossibleNames + CredentialOCR)
+                mapping_df = credential_service.get_combined_credential_mapping()
                 
                 # Save to Excel file
                 mapping_df.to_excel(credential_file_path, index=False)
                 print(f"✓ Created credential mapping file: {credential_file_path}")
                 print(f"✓ Total credential mappings: {len(mapping_df)}")
+                print(f"  - Includes PossibleNames + CredentialOCR from tbl_SIS_CredentialMapping")
         else:
             print(f"✓ Credential mapping file exists: {credential_file_path}")
         
@@ -72,7 +74,7 @@ async def lifespan(app: FastAPI):
         data_service = DataExtractionService(CSV_PATH)
         image_service = ImageProcessingService()
         gemini_client = GeminiClient()
-        classification_service = ClassificationService(credential_file_path)
+        classification_service = ClassificationService(credential_file_path, fuzzy_threshold=FUZZY_MATCH_THRESHOLD)
         pdf_processing_service = PDFProcessingService(gemini_client, PAGES_DIR)
         
         # Load credentials once

@@ -8,7 +8,7 @@ IMPORTANT: Process the columns SEPARATELY:
 
 Step 1: Read ALL names from the "PRINT NAME" column (leftmost column)
 - Use {HCPs} as reference for expected names
-- When a name matches {HCPs}, use the exact spelling from {HCPs}
+- When a name matches {HCPs}, use the exact spelling from {HCPs}, but make it upper case.
 - Check if there is a name written after "Field Employee:" in the header and extract it with credential as "Rep"
 
 Step 2: Read ALL credentials from the "CREDENTIALS" column (rightmost column) INDEPENDENTLY
