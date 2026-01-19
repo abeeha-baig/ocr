@@ -84,22 +84,23 @@ class DataExtractionService:
         
         return hcp_names
     
-    def load_hcp_credentials(self, excel_file):
+    def load_hcp_credentials(self, excel_file, company_id=1):
         """
         Load HCP credentials from Excel file.
         
         Args:
             excel_file: Path to Excel file with credential mappings
+            company_id: Company ID to filter by (default: 1)
             
         Returns:
             Tuple of (DataFrame, credential_mapping_dict)
         """
         hcp_credentials_df = pd.read_excel(excel_file)
         
-        # Filter for HCP classification and company_id=1
+        # Filter for HCP classification and company_id
         hcp_credentials_df = hcp_credentials_df[
             (hcp_credentials_df['Classification'] == 'HCP') & 
-            (hcp_credentials_df['company_id'] == 1)
+            (hcp_credentials_df['company_id'] == company_id)
         ]
         
         # Create credential mapping dictionary
@@ -108,6 +109,26 @@ class DataExtractionService:
             hcp_credentials_df['Credential']
         ))
         
-        print(f"✓ Loaded {len(hcp_credential_mapping)} HCP credential mappings for company_id=1")
+        print(f"✓ Loaded {len(hcp_credential_mapping)} HCP credential mappings for company_id={company_id}")
         
         return hcp_credentials_df, hcp_credential_mapping
+    
+    def extract_company_id_from_ocr(self, ocr_text):
+        """
+        Extract company_id from OCR results.
+        
+        Args:
+            ocr_text: OCR text output from Gemini
+            
+        Returns:
+            int: Company ID (default: 1 if not found)
+        """
+        # Look for "COMPANY_ID: <number>" pattern
+        match = re.search(r'COMPANY_ID:\s*(\d+)', ocr_text, re.IGNORECASE)
+        if match:
+            company_id = int(match.group(1))
+            print(f"✓ Extracted company_id: {company_id}")
+            return company_id
+        
+        print("⚠️ No company_id found in OCR results, using default: 1")
+        return 1

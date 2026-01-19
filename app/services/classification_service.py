@@ -8,23 +8,56 @@ from rapidfuzz import fuzz, process
 class ClassificationService:
     """Service for classifying OCR results against credential mappings."""
     
-    def __init__(self, mapping_file="PossibleNames_to_Credential_Mapping.xlsx", fuzzy_threshold=80):
+    def __init__(self, mapping_file="PossibleNames_to_Credential_Mapping.xlsx", fuzzy_threshold=80, company_id=None):
         """
         Initialize classification service.
         
         Args:
             mapping_file: Path to Excel file with credential mappings
             fuzzy_threshold: Minimum similarity score for fuzzy matching (0-100, default: 80)
+            company_id: Company ID to filter mappings (None = no filter, use for initial load)
         """
         self.mapping_file = mapping_file
         self.fuzzy_threshold = fuzzy_threshold
+        self.company_id = company_id
         self.mapping_df = None
         self.credential_list = []
+        self._full_mapping_df = None  # Cache the full Excel file
+        self._company_cache = {}  # Cache filtered mappings per company_id
         self._load_mapping()
     
-    def _load_mapping(self):
-        """Load and normalize mapping data from Excel file."""
-        self.mapping_df = pd.read_excel(self.mapping_file)
+    def _load_mapping(self, company_id=None):
+        """Load and normalize mapping data from Excel file.
+        
+        Args:
+            company_id: Optional company ID to filter by. If provided, overrides self.company_id
+        """
+        if company_id is None:
+            company_id = self.company_id
+        
+        # Load full Excel file only once
+        if self._full_mapping_df is None:
+            self._full_mapping_df = pd.read_excel(self.mapping_file)
+            print(f"✓ Loaded {len(self._full_mapping_df)} total credential mappings from Excel")
+        
+        # Check cache first
+        if company_id is not None and company_id in self._company_cache:
+            cached_data = self._company_cache[company_id]
+            self.mapping_df = cached_data['mapping_df']
+            self.credential_list = cached_data['credential_list']
+            print(f"✓ Using cached mappings for company_id={company_id}: {len(self.mapping_df)} records")
+            return
+            
+        # Filter by company_id if provided - THIS IS CRITICAL FOR CORRECT MATCHING
+        if company_id is not None:
+            # Only include credentials that belong to this specific company
+            self.mapping_df = self._full_mapping_df[self._full_mapping_df['company_id'] == company_id].copy()
+            print(f"✓ Filtered mappings by company_id={company_id}: {len(self.mapping_df)} records")
+            if self.mapping_df.empty:
+                print(f"⚠️  WARNING: No credentials found for company_id={company_id}!")
+        else:
+            self.mapping_df = self._full_mapping_df.copy()
+            print(f"⚠️  WARNING: No company_id filter applied - using ALL credentials from all companies!")
         
         # Normalize mapping data for case-insensitive matching
         self.mapping_df['PossibleNames_Upper'] = (
@@ -37,8 +70,29 @@ class ClassificationService:
         # Create list of unique credentials for fuzzy matching
         self.credential_list = self.mapping_df['Credential_Upper'].unique().tolist()
         
-        print(f"✓ Loaded {len(self.mapping_df)} credential mappings")
+        # Cache the filtered result
+        if company_id is not None:
+            self._company_cache[company_id] = {
+                'mapping_df': self.mapping_df,
+                'credential_list': self.credential_list
+            }
+        
+        if company_id is None:
+            print(f"✓ Processed {len(self.mapping_df)} credential mappings")
         print(f"✓ Fuzzy matching enabled with threshold: {self.fuzzy_threshold}%")
+    
+    def reload_with_company_id(self, company_id):
+        """Reload mappings with a specific company_id filter.
+        This ensures that credential matching ONLY happens within the specified company.
+        
+        Args:
+            company_id: Company ID to filter by
+        """
+        print(f"\n🔄 Reloading credential mappings for company_id={company_id}")
+        self.company_id = company_id
+        self._load_mapping(company_id)
+        print(f"✓ Credential matching will now ONLY use company_id={company_id} credentials")
+        print(f"✓ Available credentials for matching: {len(self.mapping_df)} records\n")
     
     def parse_ocr_results(self, ocr_text):
         """
@@ -69,11 +123,12 @@ class ClassificationService:
     def classify_credential(self, credential_ocr):
         """
         Classify a single credential using exact and fuzzy matching.
+        IMPORTANT: Only matches against credentials filtered by company_id.
         
         Matching strategy:
-        1. Exact match in PossibleNames column
-        2. Exact match in Credential column
-        3. Fuzzy match against Credential column
+        1. Exact match in PossibleNames column (filtered by company_id)
+        2. Exact match in Credential column (filtered by company_id)
+        3. Fuzzy match against Credential column (filtered by company_id)
         4. Default to Non-HCP
         
         Args:
@@ -84,7 +139,11 @@ class ClassificationService:
         """
         credential_upper = credential_ocr.upper().strip()
         
-        # Rule 1: Try exact match in PossibleNames column
+        # Ensure we're working with company-filtered data
+        if self.mapping_df.empty:
+            return 'Non-HCP', credential_ocr, 0.0, 'no_mapping_data'
+        
+        # Rule 1: Try exact match in PossibleNames column (already filtered by company_id)
         match = self.mapping_df[
             self.mapping_df['PossibleNames_Upper'] == credential_upper
         ]
@@ -92,9 +151,10 @@ class ClassificationService:
         if not match.empty:
             classification = match.iloc[0]['Classification']
             standardized = match.iloc[0]['Credential']
-            return classification, standardized, 100.0, 'exact_possiblenames'
+            company = match.iloc[0].get('company_id', 'N/A')
+            return classification, standardized, 100.0, f'exact_possiblenames(company:{company})'
         
-        # Rule 2: Try exact match in Credential column
+        # Rule 2: Try exact match in Credential column (already filtered by company_id)
         match = self.mapping_df[
             self.mapping_df['Credential_Upper'] == credential_upper
         ]
@@ -102,13 +162,14 @@ class ClassificationService:
         if not match.empty:
             classification = match.iloc[0]['Classification']
             standardized = match.iloc[0]['Credential']
-            return classification, standardized, 100.0, 'exact_credential'
+            company = match.iloc[0].get('company_id', 'N/A')
+            return classification, standardized, 100.0, f'exact_credential(company:{company})'
         
-        # Rule 3: Try fuzzy match against PossibleNames column
+        # Rule 3: Try fuzzy match against PossibleNames column (already filtered by company_id)
         fuzzy_match = self._fuzzy_match_credential(credential_upper)
         if fuzzy_match:
-            classification, standardized, score = fuzzy_match
-            return classification, standardized, score, 'fuzzy_possiblenames'
+            classification, standardized, score, company = fuzzy_match
+            return classification, standardized, score, f'fuzzy_possiblenames(company:{company})'
         
         # No match found - classify as Non-HCP
         return 'Non-HCP', credential_ocr, 0.0, 'no_match'
@@ -116,17 +177,18 @@ class ClassificationService:
     def _fuzzy_match_credential(self, credential_upper):
         """
         Perform fuzzy matching against PossibleNames column.
+        IMPORTANT: Only searches within company-filtered mapping_df.
         
         Args:
             credential_upper: Uppercased OCR credential string
             
         Returns:
-            Tuple of (classification, standardized_credential, score) or None
+            Tuple of (classification, standardized_credential, score, company_id) or None
         """
         if self.mapping_df.empty:
             return None
         
-        # Get list of all PossibleNames (uppercased)
+        # Get list of all PossibleNames (uppercased) - already filtered by company_id
         possible_names_list = self.mapping_df['PossibleNames_Upper'].tolist()
         
         # Find best match using token_sort_ratio (handles word order and punctuation)
@@ -141,15 +203,16 @@ class ClassificationService:
             
             # Check if score meets threshold
             if score >= self.fuzzy_threshold:
-                # Get the corresponding credential details
+                # Get the corresponding credential details (from company-filtered data)
                 matched_row = self.mapping_df[
                     self.mapping_df['PossibleNames_Upper'] == best_match
                 ].iloc[0]
                 
                 classification = matched_row['Classification']
                 standardized = matched_row['Credential']
+                company = matched_row.get('company_id', 'N/A')
                 
-                return classification, standardized, score
+                return classification, standardized, score, company
         
         return None
     

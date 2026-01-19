@@ -159,6 +159,13 @@ def process_single_image(image_path: str, filename: str) -> dict:
         ocr_results = gemini_client.process_ocr(prompt, processed_image)
         print(f"✓ OCR complete, extracted {len(ocr_results.split(chr(10)))} lines", flush=True)
         
+        # Extract company_id from OCR results
+        print(f"[STEP 4.5/6] Extracting company_id from OCR results...", flush=True)
+        company_id = data_service.extract_company_id_from_ocr(ocr_results)
+        
+        # Reload classification service with the correct company_id
+        classification_service.reload_with_company_id(company_id)
+        
         # Classify credentials
         print(f"[STEP 5/6] Classifying credentials...", flush=True)
         classified_results = classification_service.classify_ocr_results(ocr_results)
@@ -356,16 +363,11 @@ async def process_images(files: List[UploadFile] = File(...)):
         print(f"Output files saved: {len(saved_files)}")
         print(f"Total time: {total_time:.2f}s")
         print(f"{'='*60}")
+        print(f"[FINALIZING] Preparing API response...", flush=True)
         
-        # Clean results for response (remove classified_results DataFrames)
-        response_results = []
-        for r in results:
-            r_copy = r.copy()
-            if 'classified_results' in r_copy:
-                del r_copy['classified_results']
-            response_results.append(r_copy)
-        
-        return JSONResponse(content={
+        # Create minimal response with summary only (detailed results are in saved files)
+        response_summary = {
+            "status": "success",
             "total_processing_time_seconds": round(total_time, 2),
             "pdfs_uploaded": len(files),
             "signin_pages_extracted": len(all_signin_pages),
@@ -374,8 +376,18 @@ async def process_images(files: List[UploadFile] = File(...)):
             "failed": failed,
             "unique_expense_ids": len(expense_groups),
             "output_files": saved_files,
-            "results": response_results
-        })
+            "message": f"Processing complete! {successful}/{len(all_signin_pages)} pages processed successfully."
+        }
+        
+        print(f"✓ API response prepared, returning to client...", flush=True)
+        
+        return JSONResponse(
+            content=response_summary,
+            headers={
+                "Content-Type": "application/json",
+                "Connection": "close"
+            }
+        )
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
