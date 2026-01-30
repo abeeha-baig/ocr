@@ -27,7 +27,7 @@ CREDENTIAL_MAPPING_FILE = os.path.join(PROJECT_ROOT, "app", "tables", "PossibleN
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "app", "output")
 
 # Gemini model configuration
-GEMINI_MODEL_NAME = "gemini-2.5-flash"
+GEMINI_MODEL_NAME = "gemini-3-flash-preview"
 
 # Image processing settings
 MAX_ROTATION_ANGLE = 10  # Maximum angle for image deskewing
@@ -41,9 +41,16 @@ DB_CONFIG = {
 }
 
 # Batch processing configuration
-BATCH_SIZE = 50  # Number of images to process per batch (increased for faster processing)
-MAX_WORKERS_PER_BATCH = 15  # Maximum parallel threads per batch (increased for better parallelism)
-# For 100 images: 2 batches × 15 workers = faster processing with controlled resource usage
+BATCH_SIZE = 20  # Number of images to process per batch (reduced for 50 PDFs to manage memory)
+MAX_WORKERS_PER_BATCH = 8  # Maximum parallel threads per batch (reduced to avoid API rate limits)
+PDF_BATCH_SIZE = 10  # Process PDFs in sub-batches to manage memory
+MAX_CLASSIFICATION_WORKERS = 5  # Parallel workers for page classification
+# For 100 signin pages: 5 batches × 8 workers = controlled processing with ~40 min total time
+
+# Timeout configuration
+GEMINI_API_TIMEOUT = 120  # Timeout in seconds for individual Gemini API calls (2 minutes)
+JOB_TIMEOUT = 3600  # Total job timeout in seconds (1 hour)
+MAX_PDFS_PER_REQUEST = 50  # Maximum PDFs allowed per API request
 
 # Fuzzy matching configuration
 FUZZY_MATCH_THRESHOLD = 80  # Minimum similarity score (0-100) for credential fuzzy matching

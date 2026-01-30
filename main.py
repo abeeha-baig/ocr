@@ -1,8 +1,8 @@
 """FastAPI application for OCR processing of signin sheets."""
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
-from typing import List
+from typing import List, Dict
 import os
 import sys
 import tempfile
@@ -10,7 +10,12 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 import asyncio
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import uuid
+from datetime import datetime
+import psutil
+import shutil
+import gc
 
 from app.clients.gemini_client import GeminiClient
 from app.services.image_processing_service import ImageProcessingService
@@ -27,6 +32,11 @@ from app.constants.config import (
     DB_CONFIG,
     BATCH_SIZE,
     MAX_WORKERS_PER_BATCH,
+    PDF_BATCH_SIZE,
+    MAX_CLASSIFICATION_WORKERS,
+    GEMINI_API_TIMEOUT,
+    JOB_TIMEOUT,
+    MAX_PDFS_PER_REQUEST,
     INPUT_DIR,
     PAGES_DIR,
     FUZZY_MATCH_THRESHOLD
@@ -39,6 +49,9 @@ gemini_client = None
 classification_service = None
 pdf_processing_service = None
 signin_image_paths = []  # Store paths of signin images to process
+
+# Job storage for async processing (use Redis/database in production)
+jobs: Dict[str, Dict] = {}
 
 
 @asynccontextmanager
@@ -117,6 +130,7 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
+    memory = psutil.virtual_memory()
     return {
         "status": "healthy",
         "services": {
@@ -124,52 +138,76 @@ async def health_check():
             "image_service": image_service is not None,
             "gemini_client": gemini_client is not None,
             "classification_service": classification_service is not None
+        },
+        "memory": {
+            "percent": memory.percent,
+            "available_gb": round(memory.available / (1024**3), 2),
+            "total_gb": round(memory.total / (1024**3), 2)
         }
     }
 
 
-def process_single_image(image_path: str, filename: str) -> dict:
-    """Process a single signin sheet image."""
+def check_memory():
+    """Check if sufficient memory is available."""
+    memory = psutil.virtual_memory()
+    print(f"[MEMORY] Current usage: {memory.percent}% ({memory.available / (1024**3):.2f} GB available)", flush=True)
+    
+    if memory.percent > 85:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Server memory critically low ({memory.percent}% used). Please try again later."
+        )
+    return memory.percent
+
+
+@app.get("/job-status/{job_id}")
+async def get_job_status(job_id: str):
+    """
+    Check processing status of a job.
+    
+    Args:
+        job_id: Unique job identifier
+        
+    Returns:
+        Job status information
+    """
+    if job_id not in jobs:
+        raise HTTPException(404, "Job not found")
+    
+    return jobs[job_id]
+
+
+def process_single_image(image_path: str, filename: str, page_idx: int = 0) -> dict:
+    """Process a single signin sheet image with optimized logging for parallel execution."""
     start_time = time.time()
     try:
-        print(f"\n{'='*60}", flush=True)
-        print(f"[START] Processing: {filename}", flush=True)
-        print(f"{'='*60}", flush=True)
+        print(f"    [OCR {page_idx}] Started: {filename}", flush=True)
         
         # Extract expense ID from image filename
-        print(f"[STEP 1/6] Extracting expense ID from filename...", flush=True)
         expense_id = data_service.extract_expense_id_from_filename(image_path)
-        print(f"✓ Expense ID: {expense_id}", flush=True)
         
         # Get HCP names for this expense
         hcp_names = data_service.get_hcp_names(expense_id)
-        print(f"✓ Found {len(hcp_names)} HCP names: {hcp_names}")
+        print(f"    [OCR {page_idx}] Found {len(hcp_names)} HCP names for {expense_id[:20]}...", flush=True)
         
         # Process image with OCR
-        print(f"[STEP 3/6] Processing image (deskewing and enhancement)...", flush=True)
         processed_image = image_service.deskew_image(image_path)
-        print(f"✓ Image preprocessing complete", flush=True)
         
         # Prepare prompt with HCP names
         prompt = OCR_SIGNIN_PROMPT.format(HCPs=hcp_names)
         
         # Run OCR
-        print(f"[STEP 4/6] Running Gemini OCR (this may take 10-30 seconds)...", flush=True)
-        print(f"🤖 Using model: {gemini_client.model_name} for OCR", flush=True)
+        print(f"    [OCR {page_idx}] Running Gemini OCR...", flush=True)
         ocr_results = gemini_client.process_ocr(prompt, processed_image)
-        print(f"✓ OCR complete, extracted {len(ocr_results.split(chr(10)))} lines", flush=True)
         
         # Extract company_id from OCR results
-        print(f"[STEP 4.5/6] Extracting company_id from OCR results...", flush=True)
         company_id = data_service.extract_company_id_from_ocr(ocr_results)
         
         # Reload classification service with the correct company_id
         classification_service.reload_with_company_id(company_id)
         
         # Classify credentials
-        print(f"[STEP 5/6] Classifying credentials...", flush=True)
         classified_results = classification_service.classify_ocr_results(ocr_results)
-        print(f"✓ Classification complete: {len(classified_results)} records", flush=True)
         
         # Format results in a cleaner way (don't save yet)
         names_found = []
@@ -181,8 +219,8 @@ def process_single_image(image_path: str, filename: str) -> dict:
                 names_found.append(f"{name}, {credential} [{classification}]")
         
         processing_time = time.time() - start_time
-        print(f"\n[COMPLETE] {filename} processed in {processing_time:.2f}s", flush=True)
-        print(f"{'='*60}\n", flush=True)
+        print(f"    [OCR {page_idx}] ✓ Complete: {len(classified_results)} records in {processing_time:.1f}s", flush=True)
+        
         return {
             "filename": filename,
             "expense_id": expense_id,
@@ -193,8 +231,7 @@ def process_single_image(image_path: str, filename: str) -> dict:
         
     except Exception as e:
         processing_time = time.time() - start_time
-        print(f"\n❌ [ERROR] Failed processing {filename}: {str(e)}", flush=True)
-        print(f"{'='*60}\n", flush=True)
+        print(f"    [OCR {page_idx}] ✗ Failed: {filename} - {str(e)[:100]}", flush=True)
         return {
             "filename": filename,
             "expense_id": None,
@@ -206,20 +243,37 @@ def process_single_image(image_path: str, filename: str) -> dict:
 
 
 @app.post("/process-images")
-async def process_images(files: List[UploadFile] = File(...)):
+async def process_images(background_tasks: BackgroundTasks, files: List[UploadFile] = File(...)):
     """
-    Process multiple PDF files: extract pages, classify as signin/dinein, and process signin pages.
+    Submit PDF files for processing and return job ID immediately.
+    Processing happens in the background.
     
     Args:
+        background_tasks: FastAPI background tasks
         files: List of PDF files to process
         
     Returns:
-        JSON response with processing results for each signin page
+        Job ID and status URL for tracking progress
     """
+    print(f"\n{'='*80}", flush=True)
+    print(f"[API REQUEST] Received {len(files)} PDF file(s) for processing", flush=True)
+    print(f"{'='*80}\n", flush=True)
+    
+    # Check memory before starting
+    check_memory()
+    
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
     
+    # Validate file count
+    if len(files) > MAX_PDFS_PER_REQUEST:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_PDFS_PER_REQUEST} PDFs allowed per request. You submitted {len(files)} PDFs."
+        )
+    
     # Validate file types - only PDFs
+    print(f"[VALIDATION] Checking file types...", flush=True)
     for file in files:
         file_ext = Path(file.filename).suffix.lower()
         if file_ext != '.pdf':
@@ -227,104 +281,174 @@ async def process_images(files: List[UploadFile] = File(...)):
                 status_code=400,
                 detail=f"Invalid file type: {file.filename}. Only PDF files are accepted."
             )
+    print(f"✓ All files are valid PDFs\n", flush=True)
     
-    temp_dir = tempfile.mkdtemp()
+    # Create job
+    job_id = str(uuid.uuid4())
+    jobs[job_id] = {
+        "job_id": job_id,
+        "status": "queued",
+        "progress": {
+            "current": 0,
+            "total_pdfs": len(files),
+            "signin_pages_found": 0,
+            "signin_pages_processed": 0,
+            "current_stage": "queued"
+        },
+        "created_at": datetime.now().isoformat(),
+        "started_at": None,
+        "completed_at": None,
+        "result": None,
+        "error": None
+    }
+    
+    print(f"[JOB CREATED] Job ID: {job_id}", flush=True)
+    print(f"[JOB CREATED] Total PDFs: {len(files)}", flush=True)
+    print(f"[JOB CREATED] Status URL: /job-status/{job_id}\n", flush=True)
+    
+    # Start background processing
+    background_tasks.add_task(process_pdfs_background, job_id, files)
+    
+    print(f"[BACKGROUND TASK] Processing started in background", flush=True)
+    print(f"{'='*80}\n", flush=True)
+    
+    # Return immediately
+    return {
+        "job_id": job_id,
+        "status": "queued",
+        "message": f"Processing started for {len(files)} PDF(s)",
+        "status_url": f"/job-status/{job_id}",
+        "instructions": "Poll the status_url to check progress. Processing may take 30-60 minutes for 50 PDFs."
+    }
+    
+async def process_pdfs_background(job_id: str, files: List[UploadFile]):
+    """
+    Background task to process PDFs in batches with comprehensive logging.
+    
+    Args:
+        job_id: Unique job identifier
+        files: List of uploaded PDF files
+    """
+    temp_dir = None
     total_start_time = time.time()
     
     try:
-        print(f"\n{'='*60}", flush=True)
-        print(f"API REQUEST: Processing {len(files)} PDF file(s)", flush=True)
-        print(f"{'='*60}\n", flush=True)
+        jobs[job_id]["status"] = "processing"
+        jobs[job_id]["started_at"] = datetime.now().isoformat()
+        jobs[job_id]["progress"]["current_stage"] = "initializing"
+        
+        print(f"\n{'='*80}", flush=True)
+        print(f"[JOB {job_id[:8]}] STARTING BACKGROUND PROCESSING", flush=True)
+        print(f"{'='*80}\n", flush=True)
+        
+        # Create temp directory
+        temp_dir = tempfile.mkdtemp()
+        print(f"[SETUP] Created temporary directory: {temp_dir}", flush=True)
+        
+        # Check initial memory
+        check_memory()
         
         # Save all PDF files first
-        print(f"[UPLOAD] Saving uploaded PDF files to temporary directory...", flush=True)
+        print(f"\n[STAGE 1/4] UPLOADING PDFs TO TEMPORARY STORAGE", flush=True)
+        print(f"{'='*80}", flush=True)
+        jobs[job_id]["progress"]["current_stage"] = "uploading"
+        
         pdf_paths = []
         for idx, file in enumerate(files, 1):
             temp_path = os.path.join(temp_dir, file.filename)
             with open(temp_path, "wb") as buffer:
                 content = await file.read()
                 buffer.write(content)
-            pdf_paths.append(temp_path)
-            print(f"  [{idx}/{len(files)}] Saved: {file.filename}", flush=True)
-        print(f"✓ All PDF files saved to temp directory\n", flush=True)
+                file_size_mb = len(content) / (1024 * 1024)
+            pdf_paths.append((temp_path, file.filename))
+            print(f"  [{idx}/{len(files)}] ✓ Saved: {file.filename} ({file_size_mb:.2f} MB)", flush=True)
         
-        # Process PDFs to extract and classify pages
-        print(f"[PDF PROCESSING] Extracting and classifying pages...", flush=True)
+        print(f"✓ All {len(files)} PDF files saved\n", flush=True)
+        
+        # Process PDFs in sub-batches to manage memory
+        print(f"[STAGE 2/4] EXTRACTING AND CLASSIFYING PAGES", flush=True)
+        print(f"{'='*80}", flush=True)
+        print(f"Processing in sub-batches of {PDF_BATCH_SIZE} PDFs to manage memory", flush=True)
+        jobs[job_id]["progress"]["current_stage"] = "extracting_pages"
+        
         all_signin_pages = []
-        for pdf_path in pdf_paths:
-            try:
-                results = pdf_processing_service.process_pdf(pdf_path)
-                signin_pages = results.get('signin', [])
-                all_signin_pages.extend(signin_pages)
-                print(f"  ✓ {Path(pdf_path).name}: {len(signin_pages)} signin page(s) extracted", flush=True)
-            except Exception as e:
-                print(f"  ⚠️  Failed to process {Path(pdf_path).name}: {e}", flush=True)
+        num_pdf_batches = (len(pdf_paths) + PDF_BATCH_SIZE - 1) // PDF_BATCH_SIZE
         
+        for batch_idx in range(num_pdf_batches):
+            batch_start = batch_idx * PDF_BATCH_SIZE
+            batch_end = min(batch_start + PDF_BATCH_SIZE, len(pdf_paths))
+            batch_pdf_paths = pdf_paths[batch_start:batch_end]
+            
+            print(f"\n[PDF BATCH {batch_idx + 1}/{num_pdf_batches}] Processing PDFs {batch_start + 1}-{batch_end}", flush=True)
+            print(f"-" * 80, flush=True)
+            
+            for pdf_idx, (temp_path, filename) in enumerate(batch_pdf_paths, start=batch_start + 1):
+                try:
+                    print(f"\n  [{pdf_idx}/{len(pdf_paths)}] {filename}", flush=True)
+                    results = pdf_processing_service.process_pdf(temp_path)
+                    signin_pages = results.get('signin', [])
+                    dinein_pages = results.get('dinein', [])
+                    all_signin_pages.extend(signin_pages)
+                    
+                    print(f"      ✓ Extracted: {len(signin_pages)} signin + {len(dinein_pages)} dinein pages", flush=True)
+                    
+                    # Update progress
+                    jobs[job_id]["progress"]["current"] = pdf_idx
+                    jobs[job_id]["progress"]["signin_pages_found"] = len(all_signin_pages)
+                    
+                    # Clean up processed PDF immediately to free memory
+                    os.remove(temp_path)
+                    
+                except Exception as e:
+                    print(f"      ❌ Failed: {e}", flush=True)
+                    continue
+            
+            # Force garbage collection after each batch
+            print(f"\n  [MEMORY] Cleaning up after batch {batch_idx + 1}...", flush=True)
+            gc.collect()
+            check_memory()
+        
+        print(f"\n{'='*80}", flush=True)
+        print(f"✓ EXTRACTION COMPLETE", flush=True)
+        print(f"  Total signin pages found: {len(all_signin_pages)}", flush=True)
+        print(f"{'='*80}\n", flush=True)
+        
+        # If no signin pages found, complete the job successfully with no results
         if not all_signin_pages:
-            raise HTTPException(
-                status_code=404,
-                detail="No signin pages found in the uploaded PDFs"
-            )
+            print(f"⚠️  No signin pages found in any PDFs - job completing with no results", flush=True)
+            jobs[job_id]["status"] = "completed"
+            jobs[job_id]["completed_at"] = datetime.now().isoformat()
+            jobs[job_id]["progress"]["current_stage"] = "completed"
+            jobs[job_id]["result"] = {
+                "total_processing_time_seconds": round(time.time() - total_start_time, 2),
+                "pdfs_processed": len(files),
+                "signin_pages_found": 0,
+                "signin_pages_processed": 0,
+                "failed": 0,
+                "unique_expense_ids": 0,
+                "output_files": [],
+                "message": "No signin pages found in the uploaded PDFs. All pages were classified as dinein or other types."
+            }
+            return
         
-        print(f"\n✓ Total signin pages to process: {len(all_signin_pages)}\n", flush=True)
+        jobs[job_id]["progress"]["signin_pages_found"] = len(all_signin_pages)
         
-        # Now process the signin pages
-        file_paths = [(path, Path(path).name) for path in all_signin_pages]
+        # Process signin pages in batches
+        print(f"[STAGE 3/4] PROCESSING SIGNIN PAGES WITH OCR", flush=True)
+        print(f"{'='*80}", flush=True)
+        print(f"Processing {len(all_signin_pages)} signin pages in batches of {BATCH_SIZE}", flush=True)
+        print(f"Using {MAX_WORKERS_PER_BATCH} parallel workers per batch", flush=True)
+        jobs[job_id]["progress"]["current_stage"] = "ocr_processing"
         
-        # Process images in batches with threading
-        total_images = len(file_paths)
-        num_batches = (total_images + BATCH_SIZE - 1) // BATCH_SIZE  # Ceiling division
+        all_results = await process_signin_pages_batch(all_signin_pages, job_id)
         
-        print(f"[PROCESSING] Processing {total_images} images in {num_batches} batch(es)")
-        print(f"Batch size: {BATCH_SIZE}, Workers per batch: {MAX_WORKERS_PER_BATCH}\n", flush=True)
-        
-        loop = asyncio.get_event_loop()
-        all_results = []
-        
-        for batch_num in range(num_batches):
-            start_idx = batch_num * BATCH_SIZE
-            end_idx = min(start_idx + BATCH_SIZE, total_images)
-            batch_files = file_paths[start_idx:end_idx]
-            
-            print(f"{'='*60}", flush=True)
-            print(f"[BATCH {batch_num + 1}/{num_batches}] Processing images {start_idx + 1}-{end_idx} of {total_images}", flush=True)
-            print(f"{'='*60}\n", flush=True)
-            
-            batch_start_time = time.time()
-            
-            # Process batch in parallel
-            with ThreadPoolExecutor(max_workers=MAX_WORKERS_PER_BATCH) as executor:
-                tasks = [
-                    loop.run_in_executor(executor, process_single_image, path, filename)
-                    for path, filename in batch_files
-                ]
-                batch_results = await asyncio.gather(*tasks)
-            
-            # Track batch statistics
-            batch_time = time.time() - batch_start_time
-            batch_successful = sum(1 for r in batch_results if "error" not in r)
-            batch_failed = len(batch_results) - batch_successful
-            
-            all_results.extend(batch_results)
-            
-            print(f"\n{'='*60}", flush=True)
-            print(f"[BATCH {batch_num + 1}/{num_batches} COMPLETE]", flush=True)
-            print(f"  Processed: {len(batch_results)} images", flush=True)
-            print(f"  Successful: {batch_successful}", flush=True)
-            print(f"  Failed: {batch_failed}", flush=True)
-            print(f"  Time: {batch_time:.2f}s", flush=True)
-            print(f"  Avg per image: {batch_time/len(batch_results):.2f}s", flush=True)
-            print(f"{'='*60}\n", flush=True)
-        
-        results = all_results
-        
-        # Group results by expense ID and combine classified data
-        print(f"\n{'='*60}", flush=True)
-        print(f"[COMBINING RESULTS] Grouping by expense ID...", flush=True)
-        print(f"{'='*60}\n", flush=True)
+        # Group results by expense ID
+        print(f"\n[STAGE 4/4] COMBINING AND SAVING RESULTS", flush=True)
+        print(f"{'='*80}", flush=True)
+        jobs[job_id]["progress"]["current_stage"] = "saving_results"
         
         expense_groups = {}
-        for result in results:
+        for result in all_results:
             if "error" in result or result.get('classified_results') is None:
                 continue
             
@@ -334,71 +458,167 @@ async def process_images(files: List[UploadFile] = File(...)):
             expense_groups[expense_id].append(result['classified_results'])
         
         # Combine and save results per expense ID
+        import pandas as pd
         saved_files = []
-        for expense_id, results_list in expense_groups.items():
-            # Combine all DataFrames for this expense ID
-            import pandas as pd
+        
+        for idx, (expense_id, results_list) in enumerate(expense_groups.items(), 1):
             combined_df = pd.concat(results_list, ignore_index=True)
-            
-            # Remove duplicates across all pages
             combined_df = classification_service.remove_duplicate_names(combined_df)
-            
-            # Save combined results
             output_file = classification_service.save_results(combined_df, expense_id)
             saved_files.append(output_file)
-            print(f"  ✓ Saved {len(combined_df)} records for expense ID: {expense_id}")
+            print(f"  [{idx}/{len(expense_groups)}] ✓ Saved {len(combined_df)} records for expense ID: {expense_id}", flush=True)
         
-        # Summary
+        # Calculate final statistics
         total_time = time.time() - total_start_time
-        successful = sum(1 for r in results if "error" not in r)
-        failed = len(results) - successful
+        successful = sum(1 for r in all_results if "error" not in r)
+        failed = len(all_results) - successful
         
-        print(f"\n{'='*60}")
-        print(f"✅ PDF processing complete!")
-        print(f"PDFs uploaded: {len(files)}")
-        print(f"Signin pages processed: {len(all_signin_pages)}")
-        print(f"Successful: {successful}/{len(all_signin_pages)}")
-        print(f"Failed: {failed}/{len(all_signin_pages)}")
-        print(f"Unique expense IDs: {len(expense_groups)}")
-        print(f"Output files saved: {len(saved_files)}")
-        print(f"Total time: {total_time:.2f}s")
-        print(f"{'='*60}")
-        print(f"[FINALIZING] Preparing API response...", flush=True)
+        print(f"\n{'='*80}", flush=True)
+        print(f"✅ JOB COMPLETE - Job ID: {job_id[:8]}", flush=True)
+        print(f"{'='*80}", flush=True)
+        print(f"  PDFs processed: {len(files)}", flush=True)
+        print(f"  Signin pages found: {len(all_signin_pages)}", flush=True)
+        print(f"  Signin pages processed: {successful}/{len(all_signin_pages)}", flush=True)
+        print(f"  Failed: {failed}", flush=True)
+        print(f"  Unique expense IDs: {len(expense_groups)}", flush=True)
+        print(f"  Output files saved: {len(saved_files)}", flush=True)
+        print(f"  Total time: {total_time/60:.1f} minutes ({total_time:.1f} seconds)", flush=True)
+        print(f"  Avg time per PDF: {total_time/len(files):.1f} seconds", flush=True)
+        print(f"{'='*80}\n", flush=True)
         
-        # Create minimal response with summary only (detailed results are in saved files)
-        response_summary = {
-            "status": "success",
+        # Update job status
+        jobs[job_id]["status"] = "completed"
+        jobs[job_id]["completed_at"] = datetime.now().isoformat()
+        jobs[job_id]["progress"]["current_stage"] = "completed"
+        jobs[job_id]["progress"]["signin_pages_processed"] = successful
+        jobs[job_id]["result"] = {
             "total_processing_time_seconds": round(total_time, 2),
-            "pdfs_uploaded": len(files),
-            "signin_pages_extracted": len(all_signin_pages),
-            "signin_pages_processed": len(all_signin_pages),
-            "successful": successful,
+            "total_processing_time_minutes": round(total_time / 60, 2),
+            "pdfs_processed": len(files),
+            "signin_pages_found": len(all_signin_pages),
+            "signin_pages_processed": successful,
             "failed": failed,
             "unique_expense_ids": len(expense_groups),
             "output_files": saved_files,
             "message": f"Processing complete! {successful}/{len(all_signin_pages)} pages processed successfully."
         }
         
-        print(f"✓ API response prepared, returning to client...", flush=True)
-        
-        return JSONResponse(
-            content=response_summary,
-            headers={
-                "Content-Type": "application/json",
-                "Connection": "close"
-            }
-        )
-        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
+        error_msg = str(e)
+        print(f"\n{'='*80}", flush=True)
+        print(f"❌ JOB FAILED - Job ID: {job_id[:8]}", flush=True)
+        print(f"{'='*80}", flush=True)
+        print(f"Error: {error_msg}", flush=True)
+        print(f"{'='*80}\n", flush=True)
+        
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["completed_at"] = datetime.now().isoformat()
+        jobs[job_id]["error"] = error_msg
         
     finally:
         # Cleanup temporary files
-        try:
-            import shutil
-            shutil.rmtree(temp_dir)
-        except Exception as e:
-            print(f"Warning: Could not cleanup temp directory: {e}")
+        if temp_dir and os.path.exists(temp_dir):
+            try:
+                print(f"[CLEANUP] Removing temporary directory...", flush=True)
+                shutil.rmtree(temp_dir)
+                print(f"✓ Cleanup complete\n", flush=True)
+            except Exception as e:
+                print(f"⚠️  Warning: Could not cleanup temp directory: {e}\n", flush=True)
+
+
+async def process_signin_pages_batch(signin_pages: List[str], job_id: str) -> List[dict]:
+    """
+    Process ALL signin pages with continuous parallel processing (no batching delays).
+    
+    Args:
+        signin_pages: List of signin page paths
+        job_id: Job identifier for progress tracking
+        
+    Returns:
+        List of processing results
+    """
+    total_pages = len(signin_pages)
+    print(f"\n[OCR PROCESSING] Starting continuous parallel OCR on {total_pages} signin pages", flush=True)
+    print(f"[OCR PROCESSING] Workers: {MAX_WORKERS_PER_BATCH} | Submitting all tasks to queue...", flush=True)
+    print(f"=" * 80, flush=True)
+    
+    all_results = []
+    completed = 0
+    successful = 0
+    failed = 0
+    
+    loop = asyncio.get_event_loop()
+    overall_start_time = time.time()
+    
+    # Submit ALL OCR tasks at once - ThreadPoolExecutor manages the queue
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS_PER_BATCH) as executor:
+        # Create all futures at once
+        futures = {
+            loop.run_in_executor(
+                executor, 
+                process_single_image, 
+                page_path, 
+                Path(page_path).name,
+                idx + 1
+            ): idx
+            for idx, page_path in enumerate(signin_pages)
+        }
+        
+        print(f"[OCR PROCESSING] All {total_pages} tasks submitted. Workers are processing continuously...", flush=True)
+        print(f"=" * 80, flush=True)
+        
+        # Process results as they complete (continuous parallel processing)
+        for future in asyncio.as_completed(futures.keys()):
+            try:
+                result = await future
+                completed += 1
+                
+                if "error" not in result:
+                    successful += 1
+                else:
+                    failed += 1
+                
+                all_results.append(result)
+                
+                # Log progress every 5 pages or at milestones
+                if completed % 5 == 0 or completed in [1, total_pages]:
+                    elapsed = time.time() - overall_start_time
+                    avg_time = elapsed / completed
+                    eta_seconds = avg_time * (total_pages - completed)
+                    progress_pct = (completed / total_pages) * 100
+                    
+                    print(f"  [PROGRESS] {completed}/{total_pages} pages ({progress_pct:.1f}%) | "
+                          f"Success: {successful} | Failed: {failed} | "
+                          f"ETA: {eta_seconds/60:.1f}m", flush=True)
+                
+                # Update job progress
+                jobs[job_id]["progress"]["signin_pages_processed"] = completed
+                
+            except Exception as e:
+                completed += 1
+                failed += 1
+                page_idx = futures[future]
+                print(f"  [ERROR] Page {page_idx + 1} failed: {e}", flush=True)
+                all_results.append({
+                    "filename": signin_pages[page_idx],
+                    "error": str(e)
+                })
+    
+    total_time = time.time() - overall_start_time
+    
+    print(f"\n{'=' * 80}", flush=True)
+    print(f"[OCR COMPLETE] All {total_pages} signin pages processed", flush=True)
+    print(f"  ✓ Successful: {successful}/{total_pages} ({successful/total_pages*100:.1f}%)", flush=True)
+    print(f"  ✗ Failed: {failed}/{total_pages}", flush=True)
+    print(f"  ⏱ Total time: {total_time/60:.1f} minutes ({total_time:.1f} seconds)", flush=True)
+    print(f"  ⚡ Avg per page: {total_time/total_pages:.1f}s", flush=True)
+    print(f"  🚀 Throughput: {(total_pages/total_time)*60:.1f} pages/minute", flush=True)
+    print(f"{'=' * 80}\n", flush=True)
+    
+    # Check memory after completion
+    check_memory()
+    
+    return all_results
 
 
 if __name__ == "__main__":

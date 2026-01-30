@@ -8,6 +8,7 @@ from PIL import Image
 import fitz  # PyMuPDF
 import google.generativeai as genai
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from app.constants.config import MAX_CLASSIFICATION_WORKERS
 
 
 class PDFProcessingService:
@@ -15,7 +16,6 @@ class PDFProcessingService:
     
     # Maximum dimensions to avoid WebP encoding errors (16383 pixel limit)
     MAX_IMAGE_DIMENSION = 4096  # Safe limit well below 16383
-    MAX_CLASSIFICATION_WORKERS = 10  # Parallel classification workers
     
     def __init__(self, gemini_client, pages_dir: str):
         """
@@ -27,10 +27,13 @@ class PDFProcessingService:
         """
         self.gemini_client = gemini_client
         self.pages_dir = pages_dir
-        self.classification_model = genai.GenerativeModel("gemini-2.0-flash-lite")
+        self.classification_model = genai.GenerativeModel("gemini-2.5-flash-lite")
+        self.max_workers = MAX_CLASSIFICATION_WORKERS
         
         # Ensure pages directory exists
         os.makedirs(self.pages_dir, exist_ok=True)
+        
+        print(f"[PDF SERVICE] Initialized - Max classification workers: {self.max_workers}", flush=True)
     
     def resize_image_if_needed(self, image: Image.Image) -> Image.Image:
         """
@@ -100,7 +103,7 @@ class PDFProcessingService:
             doc = fitz.open(pdf_path)
             images = []
             
-            print(f"  📄 Converting PDF to images: {len(doc)} pages")
+            print(f"      [PDF→Images] Converting {len(doc)} pages...", flush=True)
             
             for page_num in range(len(doc)):
                 page = doc[page_num]
@@ -120,11 +123,11 @@ class PDFProcessingService:
                 images.append((page_name, img))
             
             doc.close()
-            print(f"  ✓ Extracted {len(images)} pages")
+            print(f"      ✓ Extracted {len(images)} pages", flush=True)
             return images
             
         except Exception as e:
-            print(f"  ❌ Error converting PDF to images: {e}")
+            print(f"      ❌ Error converting PDF to images: {e}", flush=True)
             raise
     
     def classify_page(self, image: Image.Image, page_name: str) -> str:
@@ -168,11 +171,11 @@ Answer:"""
                 return 'dinein'
             else:
                 # Default to signin if unclear
-                print(f"  ⚠️  Unclear classification for {page_name}: '{classification}', defaulting to signin")
+                print(f"      ⚠️  Unclear classification for {page_name}: '{classification}', defaulting to signin", flush=True)
                 return 'signin'
                 
         except Exception as e:
-            print(f"  ⚠️  Error classifying {page_name}: {e}, defaulting to signin")
+            print(f"      ⚠️  Error classifying {page_name}: {e}, defaulting to signin", flush=True)
             return 'signin'
     
     def save_page_image(self, image: Image.Image, page_name: str, classification: str) -> str:
@@ -199,7 +202,7 @@ Answer:"""
     
     def process_pdf(self, pdf_path: str) -> Dict[str, List[str]]:
         """
-        Process a PDF: split into pages, classify, and save.
+        Process a PDF: split into pages, classify, and save with continuous parallel processing.
         
         Args:
             pdf_path: Path to PDF file
@@ -208,56 +211,69 @@ Answer:"""
             Dictionary with 'signin' and 'dinein' page paths
         """
         pdf_filename = Path(pdf_path).name
-        print(f"\n{'='*60}")
-        print(f"Processing PDF: {pdf_filename}")
-        print(f"{'='*60}")
         
         try:
             # Extract expense ID
             expense_id = self.extract_expense_id_from_filename(pdf_filename)
-            print(f"  📋 Expense ID: {expense_id}")
+            print(f"      [Expense ID] {expense_id}", flush=True)
             
             # Convert PDF to images
             page_images = self.pdf_to_images(pdf_path)
+            total_pages = len(page_images)
             
-            # Classify and save each page in parallel
+            # Classify and save each page in parallel with continuous processing
             results = {
                 'signin': [],
                 'dinein': [],
                 'expense_id': expense_id
             }
             
-            print(f"  🔍 Classifying pages in parallel...")
-            print(f"  🤖 Using model: gemini-2.0-flash-lite for page classification")
+            print(f"      [Classification] Starting parallel classification of {total_pages} pages...", flush=True)
+            print(f"      [Classification] Workers: {self.max_workers} | Submitting all tasks to queue...", flush=True)
             
-            def classify_and_save(page_data):
+            completed = 0
+            
+            def classify_and_save(page_data, page_idx):
                 page_name, image = page_data
                 classification = self.classify_page(image, page_name)
                 saved_path = self.save_page_image(image, page_name, classification)
-                return page_name, classification, saved_path
+                return page_idx, page_name, classification, saved_path
             
-            # Process pages in parallel
-            with ThreadPoolExecutor(max_workers=self.MAX_CLASSIFICATION_WORKERS) as executor:
-                futures = {executor.submit(classify_and_save, page_data): page_data for page_data in page_images}
+            # Submit ALL classification tasks at once - executor manages the queue
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                futures = {
+                    executor.submit(classify_and_save, page_data, idx): idx 
+                    for idx, page_data in enumerate(page_images)
+                }
                 
+                # Process results as they complete (continuous parallel processing)
+                signin_count = 0
+                dinein_count = 0
                 for future in as_completed(futures):
                     try:
-                        page_name, classification, saved_path = future.result()
+                        page_idx, page_name, classification, saved_path = future.result(timeout=60)
                         results[classification].append(saved_path)
-                        print(f"    ✓ {page_name} → {classification}")
+                        completed += 1
+                        
+                        # Track counts
+                        if classification == 'signin':
+                            signin_count += 1
+                        else:
+                            dinein_count += 1
+                        
+                        # Log progress
+                        print(f"        [{completed}/{total_pages}] ✓ Page {page_idx + 1}: {classification} (signin: {signin_count}, dinein: {dinein_count})", flush=True)
+                        
                     except Exception as e:
-                        page_data = futures[future]
-                        print(f"    ❌ Error processing {page_data[0]}: {e}")
-            
-            print(f"\n  📊 Summary:")
-            print(f"    - Signin pages: {len(results['signin'])}")
-            print(f"    - Dinein pages: {len(results['dinein'])}")
-            print(f"  ✓ PDF processing complete\n")
+                        completed += 1
+                        page_idx = futures[future]
+                        print(f"        [{completed}/{total_pages}] ✗ Page {page_idx + 1}: Error - {e}", flush=True)
+            print(f"      [Classification Complete] Signin: {signin_count} | Dinein: {dinein_count}", flush=True)
             
             return results
             
         except Exception as e:
-            print(f"  ❌ Error processing PDF {pdf_filename}: {e}\n")
+            print(f"      ❌ Error processing PDF {pdf_filename}: {e}", flush=True)
             raise
     
     def process_all_pdfs(self, input_dir: str) -> Dict[str, List[str]]:
