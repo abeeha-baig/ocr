@@ -8,6 +8,7 @@ You MUST extract ALL names and credentials from the image. If a particular crede
 Also, sometimes a name or a credential is striked out and a new one is written beside it or above it, use YOUR BEST JUDGEMENT HERE TO FETCH THAT NAME. You can not skip such a case. Therefore, be very careful while reading striked out text.
 sometimes, the entire row's writing is really messy, but YOU HAVE TO EXTRACT IT, use YOUR BEST JUDGEMENT.
 If a complete row is striked out, SKIP that row entirely.
+Read the correct credential for each name, THIS IS HIGHLY CRITICAL.
 
 Instructions:
 - Go row by row from top to bottom
