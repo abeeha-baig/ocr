@@ -56,8 +56,9 @@ def process_single_signin_page(page_path: str, filename: str, page_idx: int,
             raise ValueError(f"Could not extract expense ID from filename: {filename}")
         
         hcp_names = data_service.get_hcp_names(expense_id)
+        credential_hints = data_service.get_credential_hints(expense_id)
         processed_image = image_service.deskew_image(page_path)
-        prompt = OCR_SIGNIN_PROMPT.format(HCPs=hcp_names)
+        prompt = OCR_SIGNIN_PROMPT.format(HCPs=hcp_names, credential_hints=credential_hints)
         
         print(f"    [OCR {page_idx}] Running Gemini OCR...", flush=True)
         ocr_results = gemini_client.process_ocr(prompt, processed_image)
@@ -75,7 +76,7 @@ def process_single_signin_page(page_path: str, filename: str, page_idx: int,
                 names_found.append(f"{name}, {credential} [{classification}]")
         
         processing_time = time.time() - start_time
-        print(f"    [OCR {page_idx}] ✓ Complete: {len(classified_results)} records in {processing_time:.1f}s", flush=True)
+        print(f"    [OCR {page_idx}] [OK] Complete: {len(classified_results)} records in {processing_time:.1f}s", flush=True)
         
         return {
             "filename": filename,
@@ -88,7 +89,7 @@ def process_single_signin_page(page_path: str, filename: str, page_idx: int,
         
     except Exception as e:
         processing_time = time.time() - start_time
-        print(f"    [OCR {page_idx}] ✗ Failed: {filename} - {str(e)[:100]}", flush=True)
+        print(f"    [OCR {page_idx}] [FAIL] Failed: {filename} - {str(e)[:100]}", flush=True)
         return {
             "filename": filename,
             "expense_id": None,
@@ -169,8 +170,8 @@ def process_signin_pages_parallel(signin_pages: List[str], data_service, image_s
     
     print(f"\n{'=' * 80}", flush=True)
     print(f"[OCR COMPLETE] All {total_pages} signin pages processed", flush=True)
-    print(f"  ✓ Successful: {successful}/{total_pages} ({successful/total_pages*100:.1f}%)", flush=True)
-    print(f"  ✗ Failed: {failed}/{total_pages}", flush=True)
+    print(f"  [OK] Successful: {successful}/{total_pages} ({successful/total_pages*100:.1f}%)", flush=True)
+    print(f"  [FAIL] Failed: {failed}/{total_pages}", flush=True)
     print(f"  ⏱ Total time: {total_time/60:.1f} minutes ({total_time:.1f} seconds)", flush=True)
     print(f"  ⚡ Avg per page: {total_time/total_pages:.1f}s", flush=True)
     print(f"  🚀 Throughput: {(total_pages/total_time)*60:.1f} pages/minute", flush=True)
@@ -193,11 +194,11 @@ def main():
     total_start_time = time.time()
     
     if not os.path.exists(DATA_FOLDER):
-        print(f"❌ ERROR: Data folder not found: {DATA_FOLDER}")
+        print(f"[ERROR] ERROR: Data folder not found: {DATA_FOLDER}")
         return
     
     if not os.path.exists(CONCUR_CSV_PATH):
-        print(f"❌ ERROR: Concur CSV not found: {CONCUR_CSV_PATH}")
+        print(f"[ERROR] ERROR: Concur CSV not found: {CONCUR_CSV_PATH}")
         return
     
     # Get all files
@@ -211,7 +212,7 @@ def main():
     print(f"  - Total: {len(pdf_files) + len(image_files)}")
     
     if not pdf_files and not image_files:
-        print("❌ ERROR: No files found in Data folder")
+        print("[ERROR] ERROR: No files found in Data folder")
         return
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -233,10 +234,10 @@ def main():
         pdf_processing_service = PDFProcessingService(gemini_client, PAGES_DIR)
         data_service.load_hcp_credentials(CREDENTIAL_MAPPING_FILE)
         
-        print("✓ All services initialized successfully\n")
+        print("[OK] All services initialized successfully\n")
         
     except Exception as e:
-        print(f"❌ ERROR: Failed to initialize services: {e}")
+        print(f"[ERROR] ERROR: Failed to initialize services: {e}")
         return
     
     # STAGE 1: Process files
@@ -272,11 +273,11 @@ def main():
                     signin_pages = results.get('signin', [])
                     dinein_pages = results.get('dinein', [])
                     
-                    print(f"      ✓ Result: {len(signin_pages)} signin + {len(dinein_pages)} dinein pages", flush=True)
+                    print(f"      [OK] Result: {len(signin_pages)} signin + {len(dinein_pages)} dinein pages", flush=True)
                     return signin_pages, True
                     
                 except Exception as e:
-                    print(f"      ❌ Failed: {e}", flush=True)
+                    print(f"      [ERROR] Failed: {e}", flush=True)
                     return [], False
             
             # Submit all PDFs in batch to thread pool
@@ -294,7 +295,7 @@ def main():
                             pdfs_processed += 1
                             batch_signin_pages.extend(signin_pages)
                     except Exception as e:
-                        print(f"      ⚠️  PDF processing error: {e}", flush=True)
+                        print(f"      [WARN] PDF processing error: {e}", flush=True)
             
             all_signin_pages.extend(batch_signin_pages)
             print(f"\n  [BATCH COMPLETE] Processed {len(batch_files)} PDFs, found {len(batch_signin_pages)} signin pages", flush=True)
@@ -303,7 +304,7 @@ def main():
             gc.collect()
             check_memory()
         
-        print(f"\n✓ PDF PROCESSING COMPLETE")
+        print(f"\n[OK] PDF PROCESSING COMPLETE")
         print(f"  PDFs processed: {pdfs_processed}/{len(pdf_files)}")
         print(f"  Signin pages from PDFs: {len(all_signin_pages)}")
     
@@ -320,17 +321,17 @@ def main():
             if img_idx % 20 == 0 or img_idx == len(image_files):
                 print(f"  Added {img_idx}/{len(image_files)} images", flush=True)
         
-        print(f"✓ All {images_added} images added")
+        print(f"[OK] All {images_added} images added")
     
     print(f"\n{'=' * 80}")
-    print(f"✓ FILE PROCESSING COMPLETE")
+    print(f"[OK] FILE PROCESSING COMPLETE")
     print(f"  PDFs processed: {pdfs_processed}")
     print(f"  Images added: {images_added}")
     print(f"  Total signin pages: {len(all_signin_pages)}")
     print(f"{'=' * 80}\n")
     
     if not all_signin_pages:
-        print("⚠️  WARNING: No signin pages found")
+        print("[WARN] WARNING: No signin pages found")
         print(f"\n{'=' * 80}")
         print(f"PROCESSING COMPLETE - NO RESULTS")
         print(f"Total Time: {(time.time() - total_start_time)/60:.1f} minutes")
@@ -371,7 +372,7 @@ def main():
         combined_df = classification_service.remove_duplicate_names(combined_df)
         output_file = classification_service.save_results(combined_df, expense_id)
         saved_files.append(output_file)
-        print(f"  [{idx}/{len(expense_groups)}] ✓ Saved {len(combined_df)} records for expense ID: {expense_id}", flush=True)
+        print(f"  [{idx}/{len(expense_groups)}] [OK] Saved {len(combined_df)} records for expense ID: {expense_id}", flush=True)
         print(f"                File: {os.path.basename(output_file)}", flush=True)
     
     # Final statistics
@@ -401,17 +402,17 @@ def main():
     print(f"{'=' * 80}\n")
     
     check_memory()
-    print("\n✓ All results saved to output folder")
-    print("✓ Processing complete!")
+    print("\n[OK] All results saved to output folder")
+    print("[OK] Processing complete!")
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n⚠️  Processing interrupted by user")
-        print("✓ Exiting...")
+        print("\n\n[WARN] Processing interrupted by user")
+        print("[OK] Exiting...")
     except Exception as e:
-        print(f"\n\n❌ FATAL ERROR: {e}")
+        print(f"\n\n[ERROR] FATAL ERROR: {e}")
         import traceback
         traceback.print_exc()

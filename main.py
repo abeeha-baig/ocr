@@ -190,11 +190,16 @@ def process_single_image(image_path: str, filename: str, page_idx: int = 0) -> d
         hcp_names = data_service.get_hcp_names(expense_id)
         print(f"    [OCR {page_idx}] Found {len(hcp_names)} HCP names for {expense_id[:20]}...", flush=True)
         
+        # Get credential hints from Concur file
+        credential_hints = data_service.get_credential_hints(expense_id)
+        if credential_hints:
+            print(f"    [OCR {page_idx}] Got credential hints for {len(credential_hints)} names", flush=True)
+        
         # Process image with OCR
         processed_image = image_service.deskew_image(image_path)
         
-        # Prepare prompt with HCP names
-        prompt = OCR_SIGNIN_PROMPT.format(HCPs=hcp_names)
+        # Prepare prompt with HCP names and credential hints
+        prompt = OCR_SIGNIN_PROMPT.format(HCPs=hcp_names, credential_hints=credential_hints)
         
         # Run OCR
         print(f"    [OCR {page_idx}] Running Gemini OCR...", flush=True)

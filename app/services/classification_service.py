@@ -41,26 +41,26 @@ class ClassificationService:
         # Load full Excel file only once
         if self._full_mapping_df is None:
             self._full_mapping_df = pd.read_excel(self.mapping_file)
-            print(f"✓ Loaded {len(self._full_mapping_df)} total credential mappings from Excel")
+            print(f"[OK] Loaded {len(self._full_mapping_df)} total credential mappings from Excel")
         
         # Check cache first
         if company_id is not None and company_id in self._company_cache:
             cached_data = self._company_cache[company_id]
             self.mapping_df = cached_data['mapping_df']
             self.credential_list = cached_data['credential_list']
-            print(f"✓ Using cached mappings for company_id={company_id}: {len(self.mapping_df)} records")
+            print(f"[OK] Using cached mappings for company_id={company_id}: {len(self.mapping_df)} records")
             return
             
         # Filter by company_id if provided - THIS IS CRITICAL FOR CORRECT MATCHING
         if company_id is not None:
             # Only include credentials that belong to this specific company
             self.mapping_df = self._full_mapping_df[self._full_mapping_df['company_id'] == company_id].copy()
-            print(f"✓ Filtered mappings by company_id={company_id}: {len(self.mapping_df)} records")
+            print(f"[OK] Filtered mappings by company_id={company_id}: {len(self.mapping_df)} records")
             if self.mapping_df.empty:
-                print(f"⚠️  WARNING: No credentials found for company_id={company_id}!")
+                print(f"[WARN] WARNING: No credentials found for company_id={company_id}!")
         else:
             self.mapping_df = self._full_mapping_df.copy()
-            print(f"⚠️  WARNING: No company_id filter applied - using ALL credentials from all companies!")
+            print(f"[WARN] WARNING: No company_id filter applied - using ALL credentials from all companies!")
         
         # Normalize mapping data for case-insensitive matching
         self.mapping_df['PossibleNames_Upper'] = (
@@ -81,8 +81,8 @@ class ClassificationService:
             }
         
         if company_id is None:
-            print(f"✓ Processed {len(self.mapping_df)} credential mappings")
-        print(f"✓ Fuzzy matching enabled with threshold: {self.fuzzy_threshold}%")
+            print(f"[OK] Processed {len(self.mapping_df)} credential mappings")
+        print(f"[OK] Fuzzy matching enabled with threshold: {self.fuzzy_threshold}%")
     
     def reload_with_company_id(self, company_id):
         """Reload mappings with a specific company_id filter.
@@ -94,8 +94,8 @@ class ClassificationService:
         print(f"\n🔄 Reloading credential mappings for company_id={company_id}")
         self.company_id = company_id
         self._load_mapping(company_id)
-        print(f"✓ Credential matching will now ONLY use company_id={company_id} credentials")
-        print(f"✓ Available credentials for matching: {len(self.mapping_df)} records\n")
+        print(f"[OK] Credential matching will now ONLY use company_id={company_id} credentials")
+        print(f"[OK] Available credentials for matching: {len(self.mapping_df)} records\n")
     
     def extract_field_employee_name(self, ocr_text):
         """
@@ -152,12 +152,12 @@ class ClassificationService:
                 })
                 matched_lines += 1
                 if matched_lines <= 3:  # Show first 3 matches
-                    print(f"  ✓ Line {idx}: '{name}' → '{credential_ocr}'")
+                    print(f"  [OK] Line {idx}: '{name}' → '{credential_ocr}'")
         
         print(f"🔍 PARSING COMPLETE - Matched {matched_lines}/{len(lines)} lines")
         if matched_lines == 0:
-            print(f"⚠️  No lines matched the pattern '- Name, Credential'")
-            print(f"⚠️  Sample lines from OCR:")
+            print(f"[WARN] No lines matched the pattern '- Name, Credential'")
+            print(f"[WARN] Sample lines from OCR:")
             for i, line in enumerate(lines[:5], 1):
                 print(f"    Line {i}: '{line.strip()}'")
         
@@ -293,7 +293,7 @@ class ClassificationService:
             print(f"📊 DEBUG - First entry example: {extracted_data[0]}")
         
         if not extracted_data:
-            print("⚠️ No data extracted from OCR results - check OCR format")
+            print("[WARN] No data extracted from OCR results - check OCR format")
             return pd.DataFrame()
         
         # Create DataFrame
@@ -371,9 +371,9 @@ class ClassificationService:
             results_df.loc[mask, 'Credential_Standardized'] = 'Field Employee'
             results_df.loc[mask, 'Match_Method'] = 'field_employee_override'
             results_df.loc[mask, 'Match_Score'] = 100.0
-            print(f"✓ Overridden {matches} occurrence(s) of '{field_employee_name}' to Field Employee")
+            print(f"[OK] Overridden {matches} occurrence(s) of '{field_employee_name}' to Field Employee")
         else:
-            print(f"⚠️  Field employee '{field_employee_name}' not found in signin entries")
+            print(f"[WARN] Field employee '{field_employee_name}' not found in signin entries")
         
         return results_df
     
@@ -419,6 +419,6 @@ class ClassificationService:
             print(f"  Field Employee: {sum(results_df['Classification'] == 'Field Employee')}")
             print(f"  Non-HCP: {sum(results_df['Classification'] == 'Non-HCP')}")
         else:
-            print(f"  ⚠️ No classification data available (empty results or missing columns)")
+            print(f"  [WARN] No classification data available (empty results or missing columns)")
         
         return output_file

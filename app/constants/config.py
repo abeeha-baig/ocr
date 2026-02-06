@@ -27,7 +27,8 @@ CREDENTIAL_MAPPING_FILE = os.path.join(PROJECT_ROOT, "app", "tables", "PossibleN
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "app", "output")
 
 # Gemini model configuration
-GEMINI_MODEL_NAME = "gemini-2.5-flash"
+# GEMINI_MODEL_NAME = "gemini-2.5-flash"  # Alternative model option
+GEMINI_MODEL_NAME = "gemini-3-flash-preview"
 
 # Tesseract OCR configuration
 TESSERACT_PATH = r"C:\Users\abeeha.baig\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"

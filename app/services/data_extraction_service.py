@@ -22,7 +22,7 @@ class DataExtractionService:
         """Load CSV file into DataFrame."""
         self.df = pd.read_csv(self.csv_path, sep="|", dtype=str)
         self.df["ExpenseV3_ID"] = self.df["ExpenseV3_ID"].str.strip()
-        print(f"✓ Loaded CSV with {len(self.df)} records")
+        print(f"[OK] Loaded CSV with {len(self.df)} records")
     
     def extract_expense_id_from_filename(self, filename):
         """
@@ -49,9 +49,14 @@ class DataExtractionService:
         Returns:
             pandas DataFrame with attendee information
         """
+        # Include AttendeeV3_Custom13 for credential hints
+        columns = ["AttendeeV3_FirstName", "AttendeeV3_LastName", "ExpenseV3_ID"]
+        if "AttendeeV3_Custom13" in self.df.columns:
+            columns.append("AttendeeV3_Custom13")
+        
         result = self.df.loc[
             self.df["ExpenseV3_ID"] == expense_id,
-            ["AttendeeV3_FirstName", "AttendeeV3_LastName", "ExpenseV3_ID"]
+            columns
         ]
         return result
     
@@ -84,6 +89,39 @@ class DataExtractionService:
         
         return hcp_names
     
+    def get_credential_hints(self, expense_id):
+        """
+        Get credential hints from Concur file for a specific expense ID.
+        This provides the LLM with expected credentials as a reading guide.
+        
+        Args:
+            expense_id: Expense ID to filter by
+            
+        Returns:
+            Dictionary mapping full names to their credentials from AttendeeV3_Custom13
+        """
+        result = self.get_attendees_for_expense(expense_id)
+        
+        if result.empty or "AttendeeV3_Custom13" not in result.columns:
+            return {}
+        
+        # Combine first and last names
+        result["FullName"] = (
+            result["AttendeeV3_FirstName"] + " " + result["AttendeeV3_LastName"]
+        )
+        
+        # Create name-to-credential mapping, excluding NaN/empty credentials
+        credential_hints = {}
+        for _, row in result.iterrows():
+            full_name = str(row["FullName"]).strip()
+            credential = row.get("AttendeeV3_Custom13", "")
+            
+            # Only add if credential exists and is not NaN/empty
+            if pd.notna(credential) and str(credential).strip():
+                credential_hints[full_name] = str(credential).strip()
+        
+        return credential_hints
+    
     def load_hcp_credentials(self, excel_file, company_id=1):
         """
         Load HCP credentials from Excel file.
@@ -109,7 +147,7 @@ class DataExtractionService:
             hcp_credentials_df['Credential']
         ))
         
-        print(f"✓ Loaded {len(hcp_credential_mapping)} HCP credential mappings for company_id={company_id}")
+        print(f"[OK] Loaded {len(hcp_credential_mapping)} HCP credential mappings for company_id={company_id}")
         
         return hcp_credentials_df, hcp_credential_mapping
     
@@ -127,8 +165,8 @@ class DataExtractionService:
         match = re.search(r'COMPANY_ID:\s*(\d+)', ocr_text, re.IGNORECASE)
         if match:
             company_id = int(match.group(1))
-            print(f"✓ Extracted company_id: {company_id}")
+            print(f"[OK] Extracted company_id: {company_id}")
             return company_id
         
-        print("⚠️ No company_id found in OCR results, using default: 1")
+        print("[WARN] No company_id found in OCR results, using default: 1")
         return 1

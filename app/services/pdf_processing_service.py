@@ -89,7 +89,7 @@ class PDFProcessingService:
             else:
                 raise ValueError(f"Filename doesn't have expected format: {filename}")
         except Exception as e:
-            print(f"⚠️  Error extracting expense ID from {filename}: {e}")
+            print(f"[WARN] Error extracting expense ID from {filename}: {e}")
             # Fallback: use filename without extension
             return Path(filename).stem
     
@@ -128,11 +128,11 @@ class PDFProcessingService:
                 images.append((page_name, img))
             
             doc.close()
-            print(f"      ✓ Extracted {len(images)} pages", flush=True)
+            print(f"      [OK] Extracted {len(images)} pages", flush=True)
             return images
             
         except Exception as e:
-            print(f"      ❌ Error converting PDF to images: {e}", flush=True)
+            print(f"      [ERROR] Error converting PDF to images: {e}", flush=True)
             raise
     
     def classify_page_with_tesseract(self, image: Image.Image, page_name: str) -> str:
@@ -181,7 +181,7 @@ class PDFProcessingService:
                 return 'dinein'
                 
         except Exception as e:
-            print(f"      ⚠️  Error in Tesseract classification for {page_name}: {e}, defaulting to dinein", flush=True)
+            print(f"      [WARN] Error in Tesseract classification for {page_name}: {e}, defaulting to dinein", flush=True)
             return 'dinein'
     
     def classify_page(self, image: Image.Image, page_name: str) -> str:
@@ -225,11 +225,11 @@ Answer:"""
                 return 'dinein'
             else:
                 # Default to dinein if unclear
-                print(f"      ⚠️  Unclear LLM classification for {page_name}: '{classification}', defaulting to dinein", flush=True)
+                print(f"      [WARN] Unclear LLM classification for {page_name}: '{classification}', defaulting to dinein", flush=True)
                 return 'dinein'
                 
         except Exception as e:
-            print(f"      ⚠️  Error in LLM classification for {page_name}: {e}, defaulting to dinein", flush=True)
+            print(f"      [WARN] Error in LLM classification for {page_name}: {e}, defaulting to dinein", flush=True)
             return 'dinein'
     
     def save_page_image(self, image: Image.Image, page_name: str, classification: str) -> str:
@@ -251,7 +251,7 @@ Answer:"""
             image.save(filepath, "PNG")
             return filepath
         except Exception as e:
-            print(f"  ❌ Error saving image {filename}: {e}")
+            print(f"  [ERROR] Error saving image {filename}: {e}")
             raise
     
     def check_if_already_split(self, pdf_path: str) -> Dict[str, List[str]]:
@@ -271,7 +271,7 @@ Answer:"""
         dinein_pages = list(Path(self.pages_dir).glob(f"{pdf_filename}_page_*_dinein.png"))
         
         if signin_pages or dinein_pages:
-            print(f"      ✓ Found existing split pages ({len(signin_pages)} signin, {len(dinein_pages)} dinein) - skipping split", flush=True)
+            print(f"      [OK] Found existing split pages ({len(signin_pages)} signin, {len(dinein_pages)} dinein) - skipping split", flush=True)
             return {
                 'signin': [str(p) for p in signin_pages],
                 'dinein': [str(p) for p in dinein_pages],
@@ -351,7 +351,7 @@ Answer:"""
                     except Exception as e:
                         completed += 1
                         page_idx = futures[future]
-                        print(f"        [{completed}/{total_pages}] ✗ Tesseract error on page {page_idx + 1}: {e}", flush=True)
+                        print(f"        [{completed}/{total_pages}] [FAIL] Tesseract error on page {page_idx + 1}: {e}", flush=True)
             
             print(f"      [Tesseract Complete] Signin: {signin_count} | Dinein: {dinein_count}", flush=True)
             
@@ -392,7 +392,7 @@ Answer:"""
                         except Exception as e:
                             completed += 1
                             page_idx = futures[future]
-                            print(f"        [{completed}/{total_pages}] ✗ LLM error on page {page_idx + 1}: {e}", flush=True)
+                            print(f"        [{completed}/{total_pages}] [FAIL] LLM error on page {page_idx + 1}: {e}", flush=True)
                 
                 print(f"      [LLM Complete] Signin: {signin_count} | Dinein: {dinein_count}", flush=True)
             else:
@@ -412,12 +412,12 @@ Answer:"""
                 saved_path = self.save_page_image(image, page_name, classification)
                 results[classification].append(saved_path)
             
-            print(f"      ✓ Saved: {len(results['signin'])} signin, {len(results['dinein'])} dinein", flush=True)
+            print(f"      [OK] Saved: {len(results['signin'])} signin, {len(results['dinein'])} dinein", flush=True)
             
             return results
             
         except Exception as e:
-            print(f"      ❌ Error processing PDF {pdf_filename}: {e}", flush=True)
+            print(f"      [ERROR] Error processing PDF {pdf_filename}: {e}", flush=True)
             raise
     
     def process_all_pdfs(self, input_dir: str) -> Dict[str, List[str]]:
@@ -439,7 +439,7 @@ Answer:"""
         pdf_files = list(Path(input_dir).glob("*.pdf"))
         
         if not pdf_files:
-            print("⚠️  No PDF files found in input directory")
+            print("[WARN] No PDF files found in input directory")
             return {}
         
         print(f"Found {len(pdf_files)} PDF file(s)\n")
@@ -467,7 +467,7 @@ Answer:"""
                 })
                 
             except Exception as e:
-                print(f"  ⚠️  Skipping {pdf_path.name} due to error: {e}\n")
+                print(f"  [WARN] Skipping {pdf_path.name} due to error: {e}\n")
                 continue
         
         # Print summary
