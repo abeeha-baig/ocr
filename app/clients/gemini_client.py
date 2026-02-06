@@ -7,6 +7,7 @@ from typing import Optional
 import google.generativeai as genai
 from dotenv import load_dotenv
 from PIL import Image
+from app.constants.config import GEMINI_MODEL_NAME
 
 
 def rate_limited(max_per_minute=60):
@@ -36,17 +37,17 @@ def rate_limited(max_per_minute=60):
 class GeminiClient:
     """Client for interacting with Google Gemini API."""
     
-    def __init__(self, model_name="gemini-3-flash-preview"):
+    def __init__(self, model_name=None):
         """
         Initialize Gemini client.
         
         Args:
-            model_name: Name of the Gemini model to use
+            model_name: Name of the Gemini model to use (defaults to config value)
         """
         load_dotenv()
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        self.model_name = model_name
-        self.model = genai.GenerativeModel(model_name)
+        self.model_name = model_name or GEMINI_MODEL_NAME
+        self.model = genai.GenerativeModel(self.model_name)
         
         # Track API calls for monitoring
         self.request_count = 0

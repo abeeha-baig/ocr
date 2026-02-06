@@ -8,7 +8,12 @@ from PIL import Image
 import fitz  # PyMuPDF
 import google.generativeai as genai
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from app.constants.config import MAX_CLASSIFICATION_WORKERS
+import pytesseract
+from rapidfuzz import fuzz
+from app.constants.config import MAX_CLASSIFICATION_WORKERS, TESSERACT_PATH
+
+# Configure Tesseract path
+pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 
 
 class PDFProcessingService:
@@ -130,9 +135,58 @@ class PDFProcessingService:
             print(f"      ❌ Error converting PDF to images: {e}", flush=True)
             raise
     
+    def classify_page_with_tesseract(self, image: Image.Image, page_name: str) -> str:
+        """
+        Classify a page as 'signin' or 'dinein' using Tesseract OCR with fuzzy keyword matching.
+        
+        A page is classified as 'signin' if it contains ALL three keywords (with fuzzy matching):
+        - "name" (or variants like "names")
+        - "signature" (or variants like "signatures")  
+        - "credential" (or variants like "credentials")
+        
+        Uses rapidfuzz with 85% similarity threshold to handle OCR variations.
+        
+        Args:
+            image: PIL Image of the page
+            page_name: Name of the page for logging
+            
+        Returns:
+            'signin' or 'dinein'
+        """
+        try:
+            # Perform OCR on the image
+            ocr_text = pytesseract.image_to_string(image).lower()
+            
+            # Split text into words for fuzzy matching
+            ocr_words = ocr_text.split()
+            
+            # Required keywords with fuzzy matching (85% threshold)
+            required_keywords = ['name', 'signature', 'credential']
+            fuzzy_threshold = 85
+            
+            # Check if each keyword has a fuzzy match in the OCR text
+            def has_fuzzy_match(keyword: str) -> bool:
+                """Check if keyword has a fuzzy match in any OCR word."""
+                for word in ocr_words:
+                    if fuzz.ratio(keyword, word) >= fuzzy_threshold:
+                        return True
+                return False
+            
+            # Check if ALL required keywords are present (with fuzzy matching)
+            has_all_keywords = all(has_fuzzy_match(keyword) for keyword in required_keywords)
+            
+            if has_all_keywords:
+                return 'signin'
+            else:
+                return 'dinein'
+                
+        except Exception as e:
+            print(f"      ⚠️  Error in Tesseract classification for {page_name}: {e}, defaulting to dinein", flush=True)
+            return 'dinein'
+    
     def classify_page(self, image: Image.Image, page_name: str) -> str:
         """
-        Classify a page as 'signin' or 'dinein' using Gemini 2.0 Flash Lite.
+        Classify a page as 'signin' or 'dinein' using Gemini 2.5 Flash Lite (fallback).
         
         Args:
             image: PIL Image of the page
@@ -170,13 +224,13 @@ Answer:"""
             elif 'dinein' in classification:
                 return 'dinein'
             else:
-                # Default to signin if unclear
-                print(f"      ⚠️  Unclear classification for {page_name}: '{classification}', defaulting to signin", flush=True)
-                return 'signin'
+                # Default to dinein if unclear
+                print(f"      ⚠️  Unclear LLM classification for {page_name}: '{classification}', defaulting to dinein", flush=True)
+                return 'dinein'
                 
         except Exception as e:
-            print(f"      ⚠️  Error classifying {page_name}: {e}, defaulting to signin", flush=True)
-            return 'signin'
+            print(f"      ⚠️  Error in LLM classification for {page_name}: {e}, defaulting to dinein", flush=True)
+            return 'dinein'
     
     def save_page_image(self, image: Image.Image, page_name: str, classification: str) -> str:
         """
@@ -200,12 +254,46 @@ Answer:"""
             print(f"  ❌ Error saving image {filename}: {e}")
             raise
     
-    def process_pdf(self, pdf_path: str) -> Dict[str, List[str]]:
+    def check_if_already_split(self, pdf_path: str) -> Dict[str, List[str]]:
         """
-        Process a PDF: split into pages, classify, and save with continuous parallel processing.
+        Check if PDF has already been split by looking for existing page images.
         
         Args:
             pdf_path: Path to PDF file
+            
+        Returns:
+            Dictionary with existing 'signin' and 'dinein' page paths, or None if not found
+        """
+        pdf_filename = Path(pdf_path).stem
+        
+        # Look for page images with this PDF name
+        signin_pages = list(Path(self.pages_dir).glob(f"{pdf_filename}_page_*_signin.png"))
+        dinein_pages = list(Path(self.pages_dir).glob(f"{pdf_filename}_page_*_dinein.png"))
+        
+        if signin_pages or dinein_pages:
+            print(f"      ✓ Found existing split pages ({len(signin_pages)} signin, {len(dinein_pages)} dinein) - skipping split", flush=True)
+            return {
+                'signin': [str(p) for p in signin_pages],
+                'dinein': [str(p) for p in dinein_pages],
+                'expense_id': self.extract_expense_id_from_filename(Path(pdf_path).name)
+            }
+        
+        return None
+    
+    def process_pdf(self, pdf_path: str, skip_split_check: bool = False) -> Dict[str, List[str]]:
+        """
+        Process a PDF: split into pages, classify with Tesseract, fallback to LLM if needed.
+        
+        Strategy:
+        1. Check if already split (unless skip_split_check=True)
+        2. Split PDF into pages
+        3. Classify ALL pages using Tesseract (parallel)
+        4. If NO signin pages found, reclassify ALL pages using LLM (parallel fallback)
+        5. Save pages with classification
+        
+        Args:
+            pdf_path: Path to PDF file
+            skip_split_check: If True, force re-splitting even if pages exist
             
         Returns:
             Dictionary with 'signin' and 'dinein' page paths
@@ -217,58 +305,114 @@ Answer:"""
             expense_id = self.extract_expense_id_from_filename(pdf_filename)
             print(f"      [Expense ID] {expense_id}", flush=True)
             
+            # Check if already split
+            if not skip_split_check:
+                existing_results = self.check_if_already_split(pdf_path)
+                if existing_results:
+                    return existing_results
+            
             # Convert PDF to images
             page_images = self.pdf_to_images(pdf_path)
             total_pages = len(page_images)
             
-            # Classify and save each page in parallel with continuous processing
+            # STEP 1: Classify ALL pages using Tesseract (parallel)
+            print(f"      [Tesseract Classification] Classifying {total_pages} pages in parallel...", flush=True)
+            
+            tesseract_results = []
+            completed = 0
+            
+            def classify_with_tesseract(page_data, page_idx):
+                page_name, image = page_data
+                classification = self.classify_page_with_tesseract(image, page_name)
+                return page_idx, page_name, image, classification
+            
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                futures = {
+                    executor.submit(classify_with_tesseract, page_data, idx): idx 
+                    for idx, page_data in enumerate(page_images)
+                }
+                
+                signin_count = 0
+                dinein_count = 0
+                for future in as_completed(futures):
+                    try:
+                        page_idx, page_name, image, classification = future.result(timeout=60)
+                        tesseract_results.append((page_idx, page_name, image, classification))
+                        completed += 1
+                        
+                        if classification == 'signin':
+                            signin_count += 1
+                        else:
+                            dinein_count += 1
+                        
+                        if completed % 5 == 0 or completed == total_pages:
+                            print(f"        [{completed}/{total_pages}] Tesseract: signin={signin_count}, dinein={dinein_count}", flush=True)
+                        
+                    except Exception as e:
+                        completed += 1
+                        page_idx = futures[future]
+                        print(f"        [{completed}/{total_pages}] ✗ Tesseract error on page {page_idx + 1}: {e}", flush=True)
+            
+            print(f"      [Tesseract Complete] Signin: {signin_count} | Dinein: {dinein_count}", flush=True)
+            
+            # STEP 2: If NO signin pages found, use LLM fallback for ALL pages
+            final_results = []
+            if signin_count == 0:
+                print(f"      [LLM Fallback] No signin pages found with Tesseract - reclassifying ALL pages with LLM...", flush=True)
+                
+                completed = 0
+                
+                def classify_with_llm(result_data):
+                    page_idx, page_name, image, _ = result_data  # Ignore Tesseract classification
+                    classification = self.classify_page(image, page_name)  # Use LLM
+                    return page_idx, page_name, image, classification
+                
+                with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                    futures = {
+                        executor.submit(classify_with_llm, result): result[0]
+                        for result in tesseract_results
+                    }
+                    
+                    signin_count = 0
+                    dinein_count = 0
+                    for future in as_completed(futures):
+                        try:
+                            page_idx, page_name, image, classification = future.result(timeout=120)
+                            final_results.append((page_idx, page_name, image, classification))
+                            completed += 1
+                            
+                            if classification == 'signin':
+                                signin_count += 1
+                            else:
+                                dinein_count += 1
+                            
+                            if completed % 5 == 0 or completed == total_pages:
+                                print(f"        [{completed}/{total_pages}] LLM: signin={signin_count}, dinein={dinein_count}", flush=True)
+                            
+                        except Exception as e:
+                            completed += 1
+                            page_idx = futures[future]
+                            print(f"        [{completed}/{total_pages}] ✗ LLM error on page {page_idx + 1}: {e}", flush=True)
+                
+                print(f"      [LLM Complete] Signin: {signin_count} | Dinein: {dinein_count}", flush=True)
+            else:
+                # Use Tesseract results
+                final_results = tesseract_results
+            
+            # STEP 3: Save all pages with classification
+            print(f"      [Saving] Saving {len(final_results)} classified pages...", flush=True)
+            
             results = {
                 'signin': [],
                 'dinein': [],
                 'expense_id': expense_id
             }
             
-            print(f"      [Classification] Starting parallel classification of {total_pages} pages...", flush=True)
-            print(f"      [Classification] Workers: {self.max_workers} | Submitting all tasks to queue...", flush=True)
-            
-            completed = 0
-            
-            def classify_and_save(page_data, page_idx):
-                page_name, image = page_data
-                classification = self.classify_page(image, page_name)
+            for page_idx, page_name, image, classification in sorted(final_results, key=lambda x: x[0]):
                 saved_path = self.save_page_image(image, page_name, classification)
-                return page_idx, page_name, classification, saved_path
+                results[classification].append(saved_path)
             
-            # Submit ALL classification tasks at once - executor manages the queue
-            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                futures = {
-                    executor.submit(classify_and_save, page_data, idx): idx 
-                    for idx, page_data in enumerate(page_images)
-                }
-                
-                # Process results as they complete (continuous parallel processing)
-                signin_count = 0
-                dinein_count = 0
-                for future in as_completed(futures):
-                    try:
-                        page_idx, page_name, classification, saved_path = future.result(timeout=60)
-                        results[classification].append(saved_path)
-                        completed += 1
-                        
-                        # Track counts
-                        if classification == 'signin':
-                            signin_count += 1
-                        else:
-                            dinein_count += 1
-                        
-                        # Log progress
-                        print(f"        [{completed}/{total_pages}] ✓ Page {page_idx + 1}: {classification} (signin: {signin_count}, dinein: {dinein_count})", flush=True)
-                        
-                    except Exception as e:
-                        completed += 1
-                        page_idx = futures[future]
-                        print(f"        [{completed}/{total_pages}] ✗ Page {page_idx + 1}: Error - {e}", flush=True)
-            print(f"      [Classification Complete] Signin: {signin_count} | Dinein: {dinein_count}", flush=True)
+            print(f"      ✓ Saved: {len(results['signin'])} signin, {len(results['dinein'])} dinein", flush=True)
             
             return results
             

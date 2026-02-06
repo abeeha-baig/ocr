@@ -21,6 +21,8 @@ Instructions:
 - Read the credentials VERY VAREFULLY. Read exactly character by character.
 - Whenever there is a special character in the credential (like '/', '-', etc.), remove it. ONLY KEEP ALPHABETIC CHARACTERS AND SPACES.
 - Check if there is a name written after "Field Employee:" in the header, and ONLY if that name appears in the body as well, prioritize the body occurrence of that name. if it does not appear in the body, keep the header name with credential as 'rep'.
+CRITICAL: Do not get confused or skip anything in the body due to header information. The header information is just additional information, but the body of the page is the most critical part and you MUST read it carefully and extract all names and credentials from there. If a name appears both in the header and the body, prioritize the body occurrence of that name.
+If not, add the header name in the last, so that it does not interfere with reading the body of the page, and assign it the credential 'rep'.
 - Read the header of the page. If any of the following words appear, note the company_id:
   * GSK → company_id: 1
   * AstraZeneca → company_id: 2
