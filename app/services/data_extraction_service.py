@@ -91,7 +91,7 @@ class DataExtractionService:
     
     def get_venue_state(self, expense_id):
         """
-        Get the venue state (ExpenseV3_LocationSubdivision) for a specific expense ID.
+        Get the venue state (ExpenseV3_Custom21) for a specific expense ID.
         
         Args:
             expense_id: Expense ID to filter by
@@ -99,13 +99,13 @@ class DataExtractionService:
         Returns:
             State string (e.g., 'Pennsylvania', 'Texas') or None if not found
         """
-        if "ExpenseV3_LocationSubdivision" not in self.df.columns:
-            print("[WARN] Column 'ExpenseV3_LocationSubdivision' not found in CSV")
+        if "ExpenseV3_Custom21" not in self.df.columns:
+            print("[WARN] Column 'ExpenseV3_Custom21' not found in CSV")
             return None
         
         result = self.df.loc[
             self.df["ExpenseV3_ID"] == expense_id,
-            "ExpenseV3_LocationSubdivision"
+            "ExpenseV3_Custom21"
         ]
         
         if result.empty:

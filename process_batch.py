@@ -46,8 +46,7 @@ def check_memory():
 
 
 def process_single_signin_page(page_path: str, filename: str, page_idx: int, 
-                               data_service, image_service, gemini_client, 
-                               classification_service) -> Dict:
+                               data_service, image_service, gemini_client) -> Dict:
     """Process a single signin page with OCR and credential classification."""
     start_time = time.time()
     
@@ -66,9 +65,16 @@ def process_single_signin_page(page_path: str, filename: str, page_idx: int,
         
         # Extract company_id from OCR results
         company_id = data_service.extract_company_id_from_ocr(ocr_results)
-        classification_service.reload_with_company_id(company_id)
         
-        # Apply state-level filtering
+        # Create ISOLATED classification service for THIS page only (prevents race conditions)
+        print(f"    [OCR {page_idx}] Creating isolated classification service for company_id={company_id}", flush=True)
+        page_classification_service = ClassificationService(
+            mapping_file=CREDENTIAL_MAPPING_FILE,
+            fuzzy_threshold=FUZZY_MATCH_THRESHOLD,
+            company_id=company_id
+        )
+        
+        # Apply state-level filtering to THIS instance only
         venue_state = data_service.get_venue_state(expense_id)
         if venue_state:
             try:
@@ -79,15 +85,19 @@ def process_single_signin_page(page_path: str, filename: str, page_idx: int,
                     )
                 
                 if valid_credential_ids:
-                    classification_service.filter_by_state_credentials(
+                    page_classification_service.filter_by_state_credentials(
                         valid_credential_ids=valid_credential_ids,
                         company_id=company_id
                     )
                     print(f"    [OCR {page_idx}] State filter applied: {venue_state} ({len(valid_credential_ids)} valid creds)", flush=True)
+                else:
+                    print(f"    [OCR {page_idx}] [WARN] No valid credentials for state '{venue_state}'", flush=True)
             except Exception as e:
                 print(f"    [OCR {page_idx}] [WARN] State filtering failed: {e}", flush=True)
+        else:
+            print(f"    [OCR {page_idx}] [WARN] No venue state found for expense {expense_id}", flush=True)
         
-        classified_results = classification_service.classify_ocr_results(ocr_results)
+        classified_results = page_classification_service.classify_ocr_results(ocr_results)
         
         names_found = []
         if not classified_results.empty:
@@ -124,7 +134,7 @@ def process_single_signin_page(page_path: str, filename: str, page_idx: int,
 
 
 def process_signin_pages_parallel(signin_pages: List[str], data_service, image_service, 
-                                  gemini_client, classification_service) -> List[Dict]:
+                                  gemini_client) -> List[Dict]:
     """Process signin pages in parallel."""
     total_pages = len(signin_pages)
     print(f"\n[OCR PROCESSING] Starting parallel OCR on {total_pages} signin pages", flush=True)
@@ -146,8 +156,7 @@ def process_signin_pages_parallel(signin_pages: List[str], data_service, image_s
                 idx + 1,
                 data_service,
                 image_service,
-                gemini_client,
-                classification_service
+                gemini_client
             ): idx
             for idx, page_path in enumerate(signin_pages)
         }
@@ -370,8 +379,7 @@ def main():
         all_signin_pages,
         data_service,
         image_service,
-        gemini_client,
-        classification_service
+        gemini_client
     )
     
     # STAGE 3: Group and save results
