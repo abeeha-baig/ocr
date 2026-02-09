@@ -63,8 +63,12 @@ class ClassificationService:
             print(f"[WARN] WARNING: No company_id filter applied - using ALL credentials from all companies!")
         
         # Normalize mapping data for case-insensitive matching
+        # Remove special characters from PossibleNames for consistent matching
+        self.mapping_df['PossibleNames_Cleaned'] = (
+            self.mapping_df['PossibleNames'].apply(self._remove_special_chars)
+        )
         self.mapping_df['PossibleNames_Upper'] = (
-            self.mapping_df['PossibleNames'].str.upper().str.strip()
+            self.mapping_df['PossibleNames_Cleaned'].str.upper().str.strip()
         )
         self.mapping_df['Credential_Upper'] = (
             self.mapping_df['Credential'].str.upper().str.strip()
@@ -96,6 +100,61 @@ class ClassificationService:
         self._load_mapping(company_id)
         print(f"[OK] Credential matching will now ONLY use company_id={company_id} credentials")
         print(f"[OK] Available credentials for matching: {len(self.mapping_df)} records\n")
+    
+    def filter_by_state_credentials(self, valid_credential_ids, company_id=None):
+        """
+        Filter the mapping to only include credentials valid for a specific state.
+        This applies state-level credential filtering for compliance purposes.
+        
+        IMPORTANT: Credential IDs 1 and 2 are ALWAYS kept regardless of state filtering.
+        
+        Args:
+            valid_credential_ids: List of credential IDs that are valid for the state
+            company_id: Optional company ID to filter by (if not already set)
+        """
+        if company_id is not None and company_id != self.company_id:
+            self.reload_with_company_id(company_id)
+        
+        if not valid_credential_ids:
+            print("[WARN] No valid credential IDs provided for state filtering")
+            return
+        
+        # Check if CredentialID column exists
+        if 'CredentialID' not in self.mapping_df.columns:
+            print("[ERROR] CredentialID column not found in mapping. Cannot apply state filtering.")
+            return
+        
+        original_count = len(self.mapping_df)
+        
+        # ALWAYS include credential IDs 1 and 2 (they are always valid regardless of state)
+        extended_valid_ids = list(set(valid_credential_ids + [1, 2]))
+        
+        print(f"[OK] State filtering: Always including credential IDs 1 and 2")
+        
+        # Filter to only include credentials with IDs in the extended valid list
+        self.mapping_df = self.mapping_df[
+            self.mapping_df['CredentialID'].isin(extended_valid_ids)
+        ].copy()
+        
+        filtered_count = len(self.mapping_df)
+        removed_count = original_count - filtered_count
+        
+        print(f"[OK] State-level filtering applied:")
+        print(f"     - Original credentials: {original_count}")
+        print(f"     - Valid for state: {filtered_count}")
+        print(f"     - Filtered out: {removed_count}")
+        
+        # Update credential list for fuzzy matching
+        self.mapping_df['PossibleNames_Cleaned'] = (
+            self.mapping_df['PossibleNames'].apply(self._remove_special_chars)
+        )
+        self.mapping_df['PossibleNames_Upper'] = (
+            self.mapping_df['PossibleNames_Cleaned'].str.upper().str.strip()
+        )
+        self.mapping_df['Credential_Upper'] = (
+            self.mapping_df['Credential'].str.upper().str.strip()
+        )
+        self.credential_list = self.mapping_df['Credential_Upper'].unique().tolist()
     
     def extract_field_employee_name(self, ocr_text):
         """
@@ -163,18 +222,38 @@ class ClassificationService:
         
         return extracted_data
     
+    def _remove_special_chars(self, text):
+        """
+        Remove all special characters except spaces from text.
+        Used for normalizing OCR credentials that may contain punctuation.
+        
+        Args:
+            text: Input text string
+            
+        Returns:
+            Text with only alphanumeric characters and spaces
+        """
+        import re
+        # Keep only alphanumeric and spaces
+        cleaned = re.sub(r'[^a-zA-Z0-9\s]', '', text)
+        # Normalize multiple spaces to single space
+        cleaned = ' '.join(cleaned.split())
+        return cleaned
+    
     def classify_credential(self, credential_ocr):
         """
         Classify a single credential using exact and fuzzy matching.
         IMPORTANT: Only matches against credentials filtered by company_id.
         
         Matching strategy:
-        1. Exact match in PossibleNames column (filtered by company_id)
-        2. Exact match in Credential column (filtered by company_id)
-        3. Fuzzy match against PossibleNames column (filtered by company_id)
+        1. Remove special characters (except spaces) from OCR credential
+        2. Convert to uppercase for case-insensitive matching
+        3. Exact match in PossibleNames column (filtered by company_id)
+        4. Exact match in Credential column (filtered by company_id)
+        5. Fuzzy match against PossibleNames column (filtered by company_id)
            - Only applied if credential length >= min_fuzzy_length
            - Short strings (abbreviations) skip fuzzy matching to avoid false matches
-        4. Default to Non-HCP
+        6. Default to Non-HCP
         
         Args:
             credential_ocr: OCR-extracted credential string
@@ -182,7 +261,9 @@ class ClassificationService:
         Returns:
             Tuple of (classification, standardized_credential, match_score, match_method)
         """
-        credential_upper = credential_ocr.upper().strip()
+        # Remove special characters except spaces, then uppercase for case-insensitive matching
+        credential_cleaned = self._remove_special_chars(credential_ocr)
+        credential_upper = credential_cleaned.upper().strip()
         
         # Ensure we're working with company-filtered data
         if self.mapping_df.empty:

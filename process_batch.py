@@ -21,6 +21,7 @@ from app.services.image_processing_service import ImageProcessingService
 from app.services.classification_service import ClassificationService
 from app.services.data_extraction_service import DataExtractionService
 from app.services.pdf_processing_service import PDFProcessingService
+from app.services.credential_service import CredentialService
 from app.constants.prompts import OCR_SIGNIN_PROMPT
 from app.constants.config import (
     CREDENTIAL_MAPPING_FILE,
@@ -63,8 +64,29 @@ def process_single_signin_page(page_path: str, filename: str, page_idx: int,
         print(f"    [OCR {page_idx}] Running Gemini OCR...", flush=True)
         ocr_results = gemini_client.process_ocr(prompt, processed_image)
         
+        # Extract company_id from OCR results
         company_id = data_service.extract_company_id_from_ocr(ocr_results)
         classification_service.reload_with_company_id(company_id)
+        
+        # Apply state-level filtering
+        venue_state = data_service.get_venue_state(expense_id)
+        if venue_state:
+            try:
+                with CredentialService() as cred_service:
+                    valid_credential_ids = cred_service.get_state_specific_credential_ids(
+                        venue_state=venue_state,
+                        company_id=company_id
+                    )
+                
+                if valid_credential_ids:
+                    classification_service.filter_by_state_credentials(
+                        valid_credential_ids=valid_credential_ids,
+                        company_id=company_id
+                    )
+                    print(f"    [OCR {page_idx}] State filter applied: {venue_state} ({len(valid_credential_ids)} valid creds)", flush=True)
+            except Exception as e:
+                print(f"    [OCR {page_idx}] [WARN] State filtering failed: {e}", flush=True)
+        
         classified_results = classification_service.classify_ocr_results(ocr_results)
         
         names_found = []

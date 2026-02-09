@@ -48,6 +48,10 @@ DB_CONFIG = {
 BATCH_SIZE = 20  # Number of images to process per batch (reduced for 50 PDFs to manage memory)
 MAX_WORKERS_PER_BATCH = 8  # Maximum parallel threads per batch (reduced to avoid API rate limits)
 PDF_BATCH_SIZE = 10  # Process PDFs in sub-batches to manage memory
+
+# Classification configuration
+MAX_CLASSIFICATION_WORKERS = 8  # Parallel workers for page classification
+MAX_CLASSIFICATION_BATCH_SIZE = 10  # Number of pages to classify per API call (batch classification)
 MAX_CLASSIFICATION_WORKERS = 5  # Parallel workers for page classification
 # For 100 signin pages: 5 batches × 8 workers = controlled processing with ~40 min total time
 

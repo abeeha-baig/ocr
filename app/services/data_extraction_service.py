@@ -89,6 +89,92 @@ class DataExtractionService:
         
         return hcp_names
     
+    def get_venue_state(self, expense_id):
+        """
+        Get the venue state (ExpenseV3_LocationSubdivision) for a specific expense ID.
+        
+        Args:
+            expense_id: Expense ID to filter by
+            
+        Returns:
+            State string (e.g., 'Pennsylvania', 'Texas') or None if not found
+        """
+        if "ExpenseV3_LocationSubdivision" not in self.df.columns:
+            print("[WARN] Column 'ExpenseV3_LocationSubdivision' not found in CSV")
+            return None
+        
+        result = self.df.loc[
+            self.df["ExpenseV3_ID"] == expense_id,
+            "ExpenseV3_LocationSubdivision"
+        ]
+        
+        if result.empty:
+            print(f"[WARN] No state found for expense_id: {expense_id}")
+            return None
+        
+        # Get the first non-null value
+        venue_state = result.iloc[0]
+        
+        if pd.isna(venue_state):
+            print(f"[WARN] State is null for expense_id: {expense_id}")
+            return None
+        
+        venue_state = str(venue_state).strip()
+        print(f"[OK] Venue state for expense {expense_id}: {venue_state}")
+        return venue_state
+    
+    def get_company_id(self, expense_id):
+        """
+        Get the company_id for a specific expense ID from the concur file.
+        
+        NOTE: In standard workflow, use extract_company_id_from_ocr() instead.
+        The LLM identifies company from signin sheet header (GSK=1, AstraZeneca=2, Lilly=3).
+        This method can be used as a fallback or validation.
+        
+        Args:
+            expense_id: Expense ID to filter by
+            
+        Returns:
+            int: Company ID, defaults to 1 if not found or invalid
+        """
+        if "User_companyId" not in self.df.columns:
+            print("[WARN] Column 'User_companyId' not found in CSV, using default company_id=1")
+            return 1
+        
+        result = self.df.loc[
+            self.df["ExpenseV3_ID"] == expense_id,
+            "User_companyId"
+        ]
+        
+        if result.empty:
+            print(f"[WARN] No company_id found for expense_id: {expense_id}, using default company_id=1")
+            return 1
+        
+        # Get the first non-null value
+        company_id = result.iloc[0]
+        
+        if pd.isna(company_id):
+            print(f"[WARN] company_id is null for expense_id: {expense_id}, using default company_id=1")
+            return 1
+        
+        try:
+            # Convert to int (handles both string and UUID formats)
+            if isinstance(company_id, str):
+                # If it's a UUID string, we might need different handling
+                # For now, try to extract numeric part or default to 1
+                if '-' in company_id:  # Looks like a UUID
+                    print(f"[WARN] UUID format company_id found: {company_id}, using default company_id=1")
+                    return 1
+                company_id = int(company_id)
+            else:
+                company_id = int(company_id)
+            
+            print(f"[OK] Company ID for expense {expense_id}: {company_id}")
+            return company_id
+        except (ValueError, TypeError) as e:
+            print(f"[WARN] Could not convert company_id to int: {company_id}, using default company_id=1")
+            return 1
+    
     def get_credential_hints(self, expense_id):
         """
         Get credential hints from Concur file for a specific expense ID.
@@ -154,6 +240,7 @@ class DataExtractionService:
     def extract_company_id_from_ocr(self, ocr_text):
         """
         Extract company_id from OCR results.
+        The LLM identifies company from the signin sheet header (GSK=1, AstraZeneca=2, Lilly=3).
         
         Args:
             ocr_text: OCR text output from Gemini
@@ -161,12 +248,12 @@ class DataExtractionService:
         Returns:
             int: Company ID (default: 1 if not found)
         """
-        # Look for "COMPANY_ID: <number>" pattern
+        # Look for "COMPANY_ID: <number>" pattern that LLM outputs
         match = re.search(r'COMPANY_ID:\s*(\d+)', ocr_text, re.IGNORECASE)
         if match:
             company_id = int(match.group(1))
-            print(f"[OK] Extracted company_id: {company_id}")
+            print(f"[OK] Extracted company_id from OCR: {company_id}")
             return company_id
         
-        print("[WARN] No company_id found in OCR results, using default: 1")
+        print("[WARN] No company_id found in OCR results, defaulting to company_id=1")
         return 1

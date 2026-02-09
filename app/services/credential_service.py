@@ -51,6 +51,7 @@ class CredentialService:
         query = """
         SELECT 
             pn.PossibleNames,
+            pn.CredentialID,
             ISNULL(cc.Credential, 'UNKNOWN') AS Credential,
             ISNULL(cc.Classification, 'Non-HCP') AS Classification,
             cc.company_id,
@@ -237,6 +238,38 @@ class CredentialService:
         """
         df = self.get_hcp_credentials_for_company(company_id)
         return dict(zip(df['PossibleNames'], df['Credential']))
+    
+    def get_state_specific_credential_ids(self, venue_state, company_id=1):
+        """
+        Get valid credential IDs for a specific state.
+        Queries the database for credentials valid in 'federal' or the specific state.
+        
+        Args:
+            venue_state: State abbreviation or name (e.g., 'Pennsylvania', 'TX')
+            company_id: Company ID to filter by (default: 1)
+            
+        Returns:
+            List of valid credential IDs for the state
+        """
+        query = f"""
+        SELECT DISTINCT a.id as credentialid, a.credential, a.company_id
+        FROM tbl_CredentialClassification a 
+        INNER JOIN tbl_State_HCPCredential as b 
+            ON a.id = b.Credentialid 
+        WHERE LOWER(b.state) IN ('federal', '{venue_state.lower()}')
+            AND a.classification = 'hcp'
+            AND a.company_id = {company_id}
+        """
+        df = self.db.fetch_to_dataframe(query)
+        
+        if df.empty:
+            print(f"[WARN] No state-specific credentials found for state='{venue_state}', company_id={company_id}")
+            return []
+        
+        # Return list of credential IDs
+        credential_ids = df['credentialid'].tolist()
+        print(f"[OK] Found {len(credential_ids)} valid credential IDs for state='{venue_state}', company_id={company_id}")
+        return credential_ids
     
     def close(self):
         """Close database connection."""

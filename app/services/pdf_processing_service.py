@@ -10,7 +10,7 @@ import google.generativeai as genai
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pytesseract
 from rapidfuzz import fuzz
-from app.constants.config import MAX_CLASSIFICATION_WORKERS, TESSERACT_PATH
+from app.constants.config import MAX_CLASSIFICATION_WORKERS, MAX_CLASSIFICATION_BATCH_SIZE, TESSERACT_PATH
 
 # Configure Tesseract path
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
@@ -232,6 +232,71 @@ Answer:"""
             print(f"      [WARN] Error in LLM classification for {page_name}: {e}, defaulting to dinein", flush=True)
             return 'dinein'
     
+    def classify_pages_batch(self, images: List[Tuple[Image.Image, str]]) -> List[str]:
+        """
+        Classify multiple pages in a single API call using Gemini 2.5 Flash Lite.
+        This reduces API calls significantly (e.g., 20 pages = 2 calls instead of 20).
+        
+        Args:
+            images: List of tuples (PIL Image, page_name)
+            
+        Returns:
+            List of classifications ('signin' or 'dinein') in same order as input
+        """
+        try:
+            batch_size = len(images)
+            
+            # Build prompt for batch classification
+            prompt = f"""You are a page classifier. Analyze these {batch_size} images and classify each as SIGNIN or DINEIN.
+
+SIGNIN pages contain:
+- Keywords like "name", "signature", "credential"
+- A list or table of names with signatures
+- Credential information (MD, RN, NP, etc.)
+
+DINEIN pages contain:
+- Everything else that is not a signin page
+- Menu items, food descriptions, receipts
+- Prices, amounts, or invoices
+- Restaurant or catering information
+
+Respond with ONLY a comma-separated list of classifications in order:
+Example: signin,dinein,dinein,signin,dinein
+
+Classifications:"""
+            
+            # Prepare content: prompt followed by all images
+            content_parts = [prompt] + [img for img, _ in images]
+            
+            response = self.classification_model.generate_content(content_parts)
+            classifications_text = response.text.strip().lower()
+            
+            # Parse response (comma-separated values)
+            classifications = [c.strip() for c in classifications_text.split(',')]
+            
+            # Validate and clean classifications
+            valid_classifications = []
+            for i, classification in enumerate(classifications):
+                if 'signin' in classification:
+                    valid_classifications.append('signin')
+                elif 'dinein' in classification:
+                    valid_classifications.append('dinein')
+                else:
+                    # Default to dinein if unclear
+                    page_name = images[i][1] if i < len(images) else f"page_{i}"
+                    print(f"      [WARN] Unclear batch classification for {page_name}: '{classification}', defaulting to dinein", flush=True)
+                    valid_classifications.append('dinein')
+            
+            # Ensure we have exactly the right number of classifications
+            while len(valid_classifications) < batch_size:
+                valid_classifications.append('dinein')
+            
+            return valid_classifications[:batch_size]
+                
+        except Exception as e:
+            print(f"      [WARN] Error in batch classification: {e}, defaulting all to dinein", flush=True)
+            return ['dinein'] * len(images)
+    
     def save_page_image(self, image: Image.Image, page_name: str, classification: str) -> str:
         """
         Save page image with classification in filename.
@@ -355,46 +420,54 @@ Answer:"""
             
             print(f"      [Tesseract Complete] Signin: {signin_count} | Dinein: {dinein_count}", flush=True)
             
-            # STEP 2: If NO signin pages found, use LLM fallback for ALL pages
+            # STEP 2: If NO signin pages found, use LLM fallback with BATCH CLASSIFICATION
             final_results = []
             if signin_count == 0:
-                print(f"      [LLM Fallback] No signin pages found with Tesseract - reclassifying ALL pages with LLM...", flush=True)
+                print(f"      [LLM Fallback] No signin pages found with Tesseract - reclassifying ALL pages with BATCH LLM...", flush=True)
                 
-                completed = 0
+                # Sort results by page index
+                sorted_results = sorted(tesseract_results, key=lambda x: x[0])
                 
-                def classify_with_llm(result_data):
-                    page_idx, page_name, image, _ = result_data  # Ignore Tesseract classification
-                    classification = self.classify_page(image, page_name)  # Use LLM
-                    return page_idx, page_name, image, classification
+                # Process in batches to reduce API calls
+                batch_size = MAX_CLASSIFICATION_BATCH_SIZE
+                num_batches = (len(sorted_results) + batch_size - 1) // batch_size
+                print(f"        Batch size: {batch_size} pages per API call | Total batches: {num_batches}", flush=True)
                 
-                with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                    futures = {
-                        executor.submit(classify_with_llm, result): result[0]
-                        for result in tesseract_results
-                    }
+                signin_count = 0
+                dinein_count = 0
+                
+                for batch_idx in range(num_batches):
+                    start_idx = batch_idx * batch_size
+                    end_idx = min(start_idx + batch_size, len(sorted_results))
+                    batch_results = sorted_results[start_idx:end_idx]
                     
-                    signin_count = 0
-                    dinein_count = 0
-                    for future in as_completed(futures):
-                        try:
-                            page_idx, page_name, image, classification = future.result(timeout=120)
+                    # Prepare images for batch classification
+                    batch_images = [(image, page_name) for _, page_name, image, _ in batch_results]
+                    
+                    # Classify entire batch in one API call
+                    try:
+                        batch_classifications = self.classify_pages_batch(batch_images)
+                        
+                        # Store results
+                        for i, classification in enumerate(batch_classifications):
+                            page_idx, page_name, image, _ = batch_results[i]
                             final_results.append((page_idx, page_name, image, classification))
-                            completed += 1
                             
                             if classification == 'signin':
                                 signin_count += 1
                             else:
                                 dinein_count += 1
-                            
-                            if completed % 5 == 0 or completed == total_pages:
-                                print(f"        [{completed}/{total_pages}] LLM: signin={signin_count}, dinein={dinein_count}", flush=True)
-                            
-                        except Exception as e:
-                            completed += 1
-                            page_idx = futures[future]
-                            print(f"        [{completed}/{total_pages}] [FAIL] LLM error on page {page_idx + 1}: {e}", flush=True)
+                        
+                        print(f"        [Batch {batch_idx+1}/{num_batches}] Processed {len(batch_classifications)} pages | signin={signin_count}, dinein={dinein_count}", flush=True)
+                    
+                    except Exception as e:
+                        print(f"        [Batch {batch_idx+1}/{num_batches}] [FAIL] Error: {e} - defaulting to dinein", flush=True)
+                        # Fallback: mark all pages in batch as dinein
+                        for page_idx, page_name, image, _ in batch_results:
+                            final_results.append((page_idx, page_name, image, 'dinein'))
+                            dinein_count += 1
                 
-                print(f"      [LLM Complete] Signin: {signin_count} | Dinein: {dinein_count}", flush=True)
+                print(f"      [LLM Complete] Signin: {signin_count} | Dinein: {dinein_count} | API calls saved: {len(sorted_results) - num_batches}", flush=True)
             else:
                 # Use Tesseract results
                 final_results = tesseract_results
