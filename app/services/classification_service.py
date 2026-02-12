@@ -188,10 +188,10 @@ class ClassificationService:
         Parse markdown-formatted OCR results.
         
         Args:
-            ocr_text: OCR output in markdown format (- Name, Credential)
+            ocr_text: OCR output in markdown format (- Name, Credential, [signature])
             
         Returns:
-            List of dictionaries with Name and Credential_OCR keys
+            List of dictionaries with Name, Credential_OCR, and Signature keys
         """
         lines = ocr_text.split('\n')
         extracted_data = []
@@ -200,22 +200,45 @@ class ClassificationService:
         matched_lines = 0
         
         for idx, line in enumerate(lines, 1):
-            # Match markdown format: "- Name, Credential"
-            match = re.match(r'-\s*(.+?),\s*(.+)$', line.strip())
-            if match:
-                name = match.group(1).strip()
-                credential_ocr = match.group(2).strip()
+            # Try new format first: "Name, Credential, [signature status]" (bullet point optional)
+            match_with_sig = re.match(r'-?\s*(.+?),\s*(.+?),\s*(\[.*?\])$', line.strip())
+            
+            if match_with_sig:
+                name = match_with_sig.group(1).strip()
+                credential_ocr = match_with_sig.group(2).strip()
+                signature = match_with_sig.group(3).strip()
+                
+                # Handle empty credential brackets: [] → empty string
+                if credential_ocr == "[]":
+                    credential_ocr = ""
+                
                 extracted_data.append({
                     'Name': name,
-                    'Credential_OCR': credential_ocr
+                    'Credential_OCR': credential_ocr,
+                    'Signature': signature
                 })
                 matched_lines += 1
                 if matched_lines <= 3:  # Show first 3 matches
-                    print(f"  [OK] Line {idx}: '{name}' → '{credential_ocr}'")
+                    print(f"  [OK] Line {idx}: '{name}' → '{credential_ocr}' → Signature: {signature}")
+            else:
+                # Fallback to old format: "Name, Credential" (no signature, bullet optional)
+                match_old = re.match(r'-?\s*(.+?),\s*(.+)$', line.strip())
+                if match_old:
+                    name = match_old.group(1).strip()
+                    credential_ocr = match_old.group(2).strip()
+                    
+                    extracted_data.append({
+                        'Name': name,
+                        'Credential_OCR': credential_ocr,
+                        'Signature': '[]'  # Default to empty signature
+                    })
+                    matched_lines += 1
+                    if matched_lines <= 3:  # Show first 3 matches
+                        print(f"  [OK] Line {idx}: '{name}' → '{credential_ocr}' → Signature: [] (old format)")
         
         print(f"🔍 PARSING COMPLETE - Matched {matched_lines}/{len(lines)} lines")
         if matched_lines == 0:
-            print(f"[WARN] No lines matched the pattern '- Name, Credential'")
+            print(f"[WARN] No lines matched the pattern '- Name, Credential, [signature]'")
             print(f"[WARN] Sample lines from OCR:")
             for i, line in enumerate(lines[:5], 1):
                 print(f"    Line {i}: '{line.strip()}'")
