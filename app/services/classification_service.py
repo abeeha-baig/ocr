@@ -158,8 +158,8 @@ class ClassificationService:
     
     def extract_field_employee_name(self, ocr_text):
         """
-        Extract field employee name from OCR text by looking for "Field Employee:" pattern.
-        This is done programmatically, not relying on LLM output.
+        Extract field employee name from OCR text by looking for standardized "Field Employee:" pattern.
+        The LLM is instructed to normalize all field employee variations to this format.
         
         Args:
             ocr_text: Raw OCR output text
@@ -167,19 +167,15 @@ class ClassificationService:
         Returns:
             Field employee name if found, otherwise None
         """
-        # Look for patterns like "Field Employee: John Doe" or "Field Employee:John Doe"
-        patterns = [
-            r'Field\s+Employee:\s*([A-Za-z][A-Za-z\s.]+?)(?:\n|$|,)',
-            r'Field\s+Employee:\s*([A-Za-z][A-Za-z\s.]+?)(?:\s{2,}|$)',
-        ]
+        # Look for the standardized pattern that LLM outputs
+        pattern = r'Field\s+Employee:\s*([A-Za-z][A-Za-z\s.]+?)(?:\n|$|,)'
         
-        for pattern in patterns:
-            match = re.search(pattern, ocr_text, re.IGNORECASE)
-            if match:
-                field_emp_name = match.group(1).strip()
-                if len(field_emp_name) > 2:  # Valid name should be more than 2 chars
-                    print(f"🔍 Field Employee detected from OCR: {field_emp_name}")
-                    return field_emp_name
+        match = re.search(pattern, ocr_text, re.IGNORECASE)
+        if match:
+            field_emp_name = match.group(1).strip()
+            if len(field_emp_name) > 2:  # Valid name should be more than 2 chars
+                print(f"🔍 Field Employee detected from OCR: {field_emp_name}")
+                return field_emp_name
         
         return None
     

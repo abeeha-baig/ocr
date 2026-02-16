@@ -34,7 +34,7 @@ from app.constants.config import (
 
 # Configuration
 DATA_FOLDER = os.path.join(project_root, "app", "input", "Data")
-CONCUR_CSV_PATH = os.path.join(project_root, "app", "tables", "Extract_syneos_GSK_20260131000000.csv")
+CONCUR_CSV_PATH = os.path.join(project_root, "app", "tables", "Extract_beigene_BEIGENE_20260202000000.csv")
 PDF_BATCH_SIZE_LOCAL = 10
 MAX_OCR_WORKERS = 8
 

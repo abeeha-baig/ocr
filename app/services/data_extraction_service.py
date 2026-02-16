@@ -28,16 +28,33 @@ class DataExtractionService:
         """
         Extract expense ID from image filename.
         
+        The expense ID is always after the second underscore (3rd part when split by '_').
+        Format: [ID]_[Event Type]_[Expense ID]_[Project/Other Info]_[Timestamp]
+        
+        Examples:
+        - "94420BB5DB3B4AE48A4E_HCP Business Lunch_gWgglnG97TnM69nd6xfgKyDBrNYl$pup11oA_ProjectID_2026-01-27T195657.647"
+          Returns: "gWgglnG97TnM69nd6xfgKyDBrNYl$pup11oA"
+        - "01C778FD04414D31BA0C_HCP Spend_gWin$pt81oo0IomGWW2zysP6gRxyAgjFIfg_7025 - ST-US - GSK - Vacancy Management (0325)_2026-01-30T185735.71"
+          Returns: "gWin$pt81oo0IomGWW2zysP6gRxyAgjFIfg"
+        
         Args:
             filename: Image filename or path
             
         Returns:
             Expense ID string or None if not found
         """
-        match = re.search(r"HCP Spend_(gWin\$[^_]+)", filename)
-        if match:
-            return match.group(1)
-        return None
+        try:
+            # Split by underscore and get the third part (index 2)
+            parts = filename.split('_')
+            if len(parts) >= 3:
+                expense_id = parts[2]
+                return expense_id
+            else:
+                print(f"[WARN] Filename doesn't have expected format: {filename}")
+                return None
+        except Exception as e:
+            print(f"[WARN] Error extracting expense ID from {filename}: {e}")
+            return None
     
     def get_attendees_for_expense(self, expense_id):
         """

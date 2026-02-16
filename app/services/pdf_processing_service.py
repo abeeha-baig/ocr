@@ -70,9 +70,14 @@ class PDFProcessingService:
         """
         Extract expense ID from PDF filename.
         
-        The expense ID is the part after the second underscore.
-        Example: "1F606C186AB64BE5ADA9_HCP Spend_gWin$pt8sc3zEgHtcCnH3jZn0yCPcLjvlyfg_..."
-        Returns: "gWin$pt8sc3zEgHtcCnH3jZn0yCPcLjvlyfg"
+        The expense ID is always after the second underscore (3rd part when split by '_').
+        Format: [ID]_[Event Type]_[Expense ID]_[Project/Other Info]_[Timestamp]
+        
+        Examples:
+        - "94420BB5DB3B4AE48A4E_HCP Business Lunch_gWgglnG97TnM69nd6xfgKyDBrNYl$pup11oA_ProjectID_2026-01-27T195657.647.pdf"
+          Returns: "gWgglnG97TnM69nd6xfgKyDBrNYl$pup11oA"
+        - "01C778FD04414D31BA0C_HCP Spend_gWin$pt81oo0IomGWW2zysP6gRxyAgjFIfg_7025 - ST-US - GSK - Vacancy Management (0325)_2026-01-30T185735.71.pdf"
+          Returns: "gWin$pt81oo0IomGWW2zysP6gRxyAgjFIfg"
         
         Args:
             filename: PDF filename
@@ -160,20 +165,25 @@ class PDFProcessingService:
             # Split text into words for fuzzy matching
             ocr_words = ocr_text.split()
             
-            # Required keywords with fuzzy matching (85% threshold)
-            required_keywords = ['name', 'signature', 'credential']
+            # Required keyword categories with multiple variations (85% threshold)
+            keyword_categories = {
+                'name': ['name', 'names'],
+                'credential': ['title', 'credential', 'credentials', 'designation'],
+                'signature': ['signature', 'signatures', 'sign']
+            }
             fuzzy_threshold = 85
             
-            # Check if each keyword has a fuzzy match in the OCR text
-            def has_fuzzy_match(keyword: str) -> bool:
-                """Check if keyword has a fuzzy match in any OCR word."""
-                for word in ocr_words:
-                    if fuzz.ratio(keyword, word) >= fuzzy_threshold:
-                        return True
+            # Check if any keyword from a category has a fuzzy match in the OCR text
+            def has_category_match(keywords: list) -> bool:
+                """Check if any keyword in the category has a fuzzy match in any OCR word."""
+                for keyword in keywords:
+                    for word in ocr_words:
+                        if fuzz.ratio(keyword, word) >= fuzzy_threshold:
+                            return True
                 return False
             
-            # Check if ALL required keywords are present (with fuzzy matching)
-            has_all_keywords = all(has_fuzzy_match(keyword) for keyword in required_keywords)
+            # Check if ALL three categories are present (with fuzzy matching)
+            has_all_keywords = all(has_category_match(keywords) for keywords in keyword_categories.values())
             
             if has_all_keywords:
                 return 'signin'

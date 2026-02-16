@@ -8,8 +8,8 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 # CSV data paths
 CSV_PATH = os.path.join(
     PROJECT_ROOT, 
-    "app", "input", 
-    "Extract_syneos_GSK_20260117000000.csv"
+    "app", "tables", 
+    "Extract_beigene_BEIGENE_20260202000000.csv"
 )
 
 # Directory paths

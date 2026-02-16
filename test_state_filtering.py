@@ -14,7 +14,7 @@ def test_state_filtering():
     print("="*80)
     
     # Test configuration
-    csv_path = "app/tables/Extract_syneos_GSK_20260131000000.csv"
+    csv_path = "app/tables/Extract_beigene_BEIGENE_20260202000000.csv"
     mapping_file = "PossibleNames_to_Credential_Mapping.xlsx"
     
     # Sample expense ID from the concur file
